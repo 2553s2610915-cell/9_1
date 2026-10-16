@@ -1,3 +1,3 @@
-import stremlit as st
+import streamlit as st
 st.title('ss')
 st.write('ss')
