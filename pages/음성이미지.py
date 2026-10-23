@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="소리눈 | 실시간 장애물 감지",
@@ -501,8 +500,8 @@ canvas {
 </html>
 """
 
-# Streamlit 표준 키워드 매개변수만 사용 (allow 제거로 TypeError 방지)
-components.html(app_html, height=800, scrolling=True)
+# Streamlit 최신 컴포넌트 렌더링 방식
+st.components.v1.html(app_html, height=800, scrolling=True)
 
 st.markdown("---")
 st.markdown("### 이용 시 확인 사항")
