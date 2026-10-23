@@ -86,7 +86,7 @@ app_html = r"""
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- AI 모델 및 라이브러리 프리로드 -->
+<!-- TensorFlow.js 및 COCO-SSD 스크립트 프리로드 -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 
@@ -501,8 +501,8 @@ canvas {
 </html>
 """
 
-# Streamlit Cloud 환경에서 카메라 권한 허용(allow="camera; microphone") 추가
-components.html(app_html, height=800, scrolling=True, allow="camera; microphone")
+# Streamlit 표준 키워드 매개변수만 사용 (allow 제거로 TypeError 방지)
+components.html(app_html, height=800, scrolling=True)
 
 st.markdown("---")
 st.markdown("### 이용 시 확인 사항")
