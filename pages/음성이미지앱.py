@@ -160,39 +160,10 @@ st.caption("시각장애인을 위한 전방 실시간 장애물 감지 및 음�
 try:
     api_key = st.secrets.get("GEMINI_API_KEY", None)
 except Exception:
-    api_key = None
+    api_key = Noneㅂㅁ
 
 if not api_key:
-    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다.")
-    st.info("Streamlit Cloud의 [App settings] -> [Secrets] 메뉴에서 GEMINI_API_KEY = \"your_api_key\" 를 입력해주세요.")
-    st.stop()
-
-try:
-    client = get_gemini_client(api_key)
-except Exception as e:
-    st.error(f"API 클라이언트 초기화 오류: {e}")
-    st.stop()
-
-# 6. 안내 문구 및 카메라 권한 체크 UI
-with st.expander("ℹ️ 사용 방법 및 권한 안내", expanded=False):
-    st.write("""
-    1. 브라우저 팝업이 뜨면 **'카메라 권한 허용'**을 눌러주세요.
-    2. 아래 **'전방 촬영'** 버튼으로 사진을 찍습니다.
-    3. AI가 이미지를 분석하여 위험도와 위치를 파악합니다.
-    4. 장애물이 감지되면 **음성(TTS)**으로 즉각 알려줍니다.
-    """)
-
-# 카메라 권한 상태 확인 카드 렌더링
-render_camera_permission_check()
-
-st.subheader("📷 전방 화면 촬영")
-camera_image = st.camera_input("전방을 촬영하세요", label_visibility="visible")
-
-# 분석 수행 함수
-def analyze_image(image_bytes):
-    prompt = """
-    당신은 시각장애인을 돕는 AI 보조 안내 시스템입니다.
-    제공된 전방 사진을 분석하여 시각장애인이 보행 중 충돌하거나 넘어질 수 있는 위험 요소(장애물, 계단, 턱, 차량, 기둥, 사람, 입간판 등)를 감지하세요.
+    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다.")ㅂ
 
     반드시 다음 구조의 JSON 형식으로만 응답하세요:
     {
