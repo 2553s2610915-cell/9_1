@@ -12,65 +12,52 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
-COUNT = 5  # 한 번에 추천하는 곡 수
+COUNT = 6  # 한 번에 추천하는 곡 수
 
 st.set_page_config(page_title="음악 나침반", page_icon="🧭", layout="centered")
 
 st.markdown(
     """
     <style>
-    html, body, [class*="css"] { font-size: 20px; }
-    .stApp {
-        background: linear-gradient(120deg, #0a84ff 0%, #3aa0ff 55%, #6db8ff 100%);
-        overflow-x: hidden;
-    }
+    html, body, [class*="css"] { font-size: 19px; }
+    .stApp { background: linear-gradient(120deg, #0a84ff 0%, #3aa0ff 55%, #7cc0ff 100%); }
+    .block-container, [data-testid="stMainBlockContainer"] { max-width: 920px; padding-top: 2rem; }
     .stApp p, .stApp label, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
-    .stApp [data-testid="stAlert"] p, .stApp [data-testid="stAlert"] span { color: #111111; }
+    [data-testid="stAlert"] { background: #ffffff !important; border-radius: 14px; }
+    [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: #111111 !important; }
 
-    .hero { text-align: center; margin: 10px 0 18px 0; }
-    .hero .brand { font-size: 2.2rem; font-weight: 800; color: #ffffff; letter-spacing: 1px; margin-top: 14px; }
-    .hero .sub { color: #eaf4ff; font-size: 1.05rem; margin-top: 6px; }
-
+    .hero { text-align: center; margin: 4px 0 14px 0; }
+    .hero .brand { font-size: 2.2rem; font-weight: 800; color: #ffffff; margin: 12px 0 0 0; padding: 0; }
+    .hero .sub { color: #eaf4ff; font-size: 1.05rem; margin-top: 4px; }
     .disc {
-        width: 190px; height: 190px; border-radius: 50%; margin: 0 auto; position: relative;
+        width: 96px; height: 96px; border-radius: 50%; margin: 0 auto; position: relative;
         background: conic-gradient(from 0deg, #1b1464, #ff2d55, #6a11cb, #00c6ff, #ff2d55, #1b1464);
-        box-shadow: 0 14px 34px rgba(255, 45, 85, 0.35);
+        box-shadow: 0 10px 26px rgba(255, 45, 85, 0.35);
         animation: spin 9s linear infinite;
     }
     .disc::after {
         content: ""; position: absolute; top: 38%; left: 38%; width: 24%; height: 24%;
         border-radius: 50%; background: #ffffff; box-shadow: inset 0 0 0 3px #dbe8ff;
     }
-    .hero .disc { width: 130px; height: 130px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
 
-    .stage { position: relative; max-width: 420px; margin: 10px auto 18px auto; }
-    .stage::before, .stage::after {
-        content: ""; position: absolute; top: 70px; width: 150px; height: 210px; z-index: 0;
-        background: rgba(255, 255, 255, 0.35); border-radius: 18px;
+    .rtitle { font-size: 1.9rem; font-weight: 800; color: #ffffff; }
+    .rsum { color: #ffffff; font-size: 1rem; margin: 4px 0 6px 0; line-height: 1.45; }
+    .chip {
+        display: inline-block; background: rgba(255,255,255,0.25); color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.6); border-radius: 999px;
+        padding: 2px 12px; margin: 0 6px 6px 0; font-size: 0.9rem; font-weight: 700;
     }
-    .stage::before { left: -95px; transform: rotate(-18deg); }
-    .stage::after { right: -95px; transform: rotate(18deg); }
-    .card {
-        position: relative; z-index: 1; background: #ffffff; border-radius: 22px;
-        padding: 28px 22px 24px 22px; text-align: center;
-        box-shadow: 0 18px 40px rgba(0, 40, 120, 0.25);
-    }
-    .card .count { color: #6b7a99; font-size: 0.95rem; margin-top: 18px; }
-    .card .song { color: #111111; font-size: 1.6rem; font-weight: 800; margin-top: 6px; word-break: keep-all; }
-    .card .artist { color: #0a6cff; font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
-    .card .reason { color: #444444; font-size: 1rem; margin-top: 12px; line-height: 1.5; }
 
-    .stButton > button, .stLinkButton > a, [data-testid^="stBaseLinkButton"] {
-        font-size: 1.15rem; font-weight: 700; padding: 0.85rem 1rem; border-radius: 999px;
+    .stButton > button {
+        font-size: 1.1rem; font-weight: 700; padding: 0.8rem 1rem; border-radius: 999px;
         border: 2px solid #ffffff !important; background: #ffffff !important; color: #0a6cff !important;
     }
-    .stButton > button p, .stLinkButton > a p { color: inherit !important; }
-    .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
+    .stButton > button p { color: inherit !important; }
+    button[data-testid="stBaseButton-primary"], .stButton > button[kind="primary"] {
         background: #0b2a6f !important; color: #ffffff !important; border: 2px solid #0b2a6f !important;
     }
-    .stButton > button:disabled { opacity: 0.5; }
     .stTextArea textarea { font-size: 1.15rem !important; background: #ffffff !important; color: #111111 !important; }
     *:focus { outline: 4px solid #ffd54a !important; outline-offset: 2px; }
     </style>
@@ -87,7 +74,7 @@ defaults = {
     "pending": "",
     "error": "",
     "page": "home",
-    "idx": 0,
+    "start": 0,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -376,6 +363,10 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
 
 
 # ---------- 표시용 ----------
+def esc(x) -> str:
+    return htmllib.escape(str(x or ""), quote=True)
+
+
 def join_list(v) -> str:
     if isinstance(v, list):
         return ", ".join(str(x) for x in v if x)
@@ -400,65 +391,172 @@ def build_speech_lines(result: dict) -> list:
     return lines
 
 
-def speak_component(lines: list, rate: float):
-    safe = json.dumps(lines, ensure_ascii=False).replace("</", "<\\/")
-    page_html = f"""
-    <div style="display:flex; gap:12px; flex-wrap:wrap; font-family:sans-serif;">
-      <button id="play" aria-label="추천 결과 소리로 듣기"
-        style="font-size:20px; font-weight:700; padding:14px 22px; border-radius:999px;
-               border:2px solid #fff; background:#fff; color:#0a6cff; cursor:pointer;">
-        🔊 결과 소리로 듣기</button>
-      <button id="stop" aria-label="읽기 멈추기"
-        style="font-size:20px; font-weight:700; padding:14px 22px; border-radius:999px;
-               border:2px solid #fff; background:transparent; color:#fff; cursor:pointer;">
-        ⏹ 멈추기</button>
+CAROUSEL_TEMPLATE = """
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:transparent;color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+.wrap{display:flex;gap:12px;height:436px;padding:2px}
+.left{flex:1;min-width:0;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.hint{font-size:14px;font-weight:700;line-height:1.35}
+.nav{display:flex;gap:6px;flex-shrink:0}
+.pill{border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:14px;
+  padding:7px 12px;border-radius:999px;cursor:pointer;font-family:inherit}
+.pill:hover{background:#eaf3ff}
+.rail{flex:1;min-height:0;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
+  position:relative;padding:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.rail::-webkit-scrollbar{display:none}
+.card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#fff;border-radius:22px;
+  padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#111;
+  box-shadow:0 14px 30px rgba(0,40,120,.28);transition:transform .15s}
+.card:hover{transform:translateY(-4px)}
+.card:focus{outline:4px solid #ffd54a;outline-offset:2px}
+.art{position:relative;height:138px;border-radius:16px;overflow:hidden;flex-shrink:0;
+  background:linear-gradient(135deg,var(--c1),var(--c2))}
+.art::before{content:"♪";position:absolute;left:14px;bottom:2px;font-size:56px;color:rgba(255,255,255,.35)}
+.num{position:absolute;left:12px;top:6px;font-size:42px;font-weight:900;line-height:1;
+  color:rgba(255,255,255,.95);text-shadow:0 2px 8px rgba(0,0,0,.25)}
+.vinyl{position:absolute;right:-34px;bottom:-34px;width:128px;height:128px;border-radius:50%;
+  background:
+   conic-gradient(rgba(255,255,255,0) 0 20%,rgba(255,255,255,.2) 25%,rgba(255,255,255,0) 30% 70%,rgba(255,255,255,.2) 75%,rgba(255,255,255,0) 80%),
+   repeating-radial-gradient(circle at center,#15151f 0 3px,#262634 3px 5px);
+  box-shadow:0 0 0 3px rgba(255,255,255,.14);animation:spin 7s linear infinite}
+.vinyl::after{content:"";position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;
+  border-radius:50%;background:var(--c3);box-shadow:0 0 0 5px rgba(255,255,255,.35)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.title{margin-top:10px;font-size:18px;font-weight:800;line-height:1.3;word-break:keep-all;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.artist{margin-top:2px;font-size:15px;font-weight:700;color:#0a6cff}
+.reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#555;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.go{margin-top:auto;background:#ff2d2d;color:#fff;font-weight:800;font-size:15px;
+  text-align:center;padding:10px 6px;border-radius:999px}
+.card:hover .go{background:#d60000}
+.panel{width:128px;flex-shrink:0;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.55);
+  border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:9px}
+.ptitle{font-size:15px;font-weight:800;text-align:center;line-height:1.3}
+.pbtn{width:100%;border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:15px;
+  line-height:1.3;padding:12px 6px;border-radius:14px;cursor:pointer;font-family:inherit}
+.pbtn.stop{background:transparent;color:#fff}
+.pbtn:hover{filter:brightness(.95)}
+.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px}
+.speed{display:flex;flex-direction:column;gap:6px}
+.sp{width:100%;border:2px solid #fff;background:transparent;color:#fff;font-weight:700;font-size:14px;
+  padding:7px 4px;border-radius:999px;cursor:pointer;font-family:inherit}
+.sp.on{background:#0b2a6f;border-color:#0b2a6f}
+button:focus{outline:4px solid #ffd54a;outline-offset:2px}
+@media (max-width:480px){.nav{display:none}.panel{width:112px;padding:12px 8px}}
+@media (prefers-reduced-motion:reduce){.vinyl{animation:none}.card{transition:none}}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <div class="bar">
+      <div class="hint">옆으로 넘겨서 고르고, 곡 카드를 누르면 유튜브가 열려요</div>
+      <div class="nav">
+        <button class="pill" id="prev" type="button">← 이전 곡</button>
+        <button class="pill" id="next" type="button">다음 곡 →</button>
+      </div>
     </div>
-    <script>
-      const lines = {safe};
-      const rate = {rate};
-      const synth = window.speechSynthesis;
-      document.getElementById('play').onclick = function() {{
-        if (!synth) {{ alert('이 브라우저는 음성 읽기를 지원하지 않습니다.'); return; }}
-        synth.cancel();
-        lines.forEach(function(t) {{
-          const u = new SpeechSynthesisUtterance(t);
-          u.lang = 'ko-KR';
-          u.rate = rate;
-          synth.speak(u);
-        }});
-      }};
-      document.getElementById('stop').onclick = function() {{
-        if (synth) synth.cancel();
-      }};
-    </script>
-    """
-    components.html(page_html, height=100)
+    <div class="rail" id="rail" role="region" aria-label="추천 노래 목록">__CARDS__</div>
+  </div>
+  <div class="panel" role="group" aria-label="소리로 듣기">
+    <div class="ptitle">🎧 소리로 듣기</div>
+    <button class="pbtn" id="play" type="button">🔊 추천 곡 읽어 주기</button>
+    <button class="pbtn stop" id="stop" type="button">⏹ 멈추기</button>
+    <div class="plabel">읽는 속도</div>
+    <div class="speed">
+      <button class="sp" data-rate="0.8" type="button" aria-pressed="false">느리게</button>
+      <button class="sp on" data-rate="1.0" type="button" aria-pressed="true">보통</button>
+      <button class="sp" data-rate="1.3" type="button" aria-pressed="false">빠르게</button>
+    </div>
+  </div>
+</div>
+<script>
+  var LINES = __LINES__;
+  var START = __START__;
+  var rate = 1.0;
+  var synth = window.speechSynthesis;
+  var rail = document.getElementById('rail');
+
+  function step(dir) {
+    var c = rail.querySelector('.card');
+    var w = c ? c.offsetWidth + 12 : 220;
+    rail.scrollBy({left: dir * w, behavior: 'smooth'});
+  }
+  document.getElementById('prev').onclick = function() { step(-1); };
+  document.getElementById('next').onclick = function() { step(1); };
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowLeft') { step(-1); }
+    if (e.key === 'ArrowRight') { step(1); }
+  });
+
+  var cards = rail.querySelectorAll('.card');
+  if (START > 0 && cards[START]) { rail.scrollLeft = cards[START].offsetLeft - 4; }
+
+  var sps = document.querySelectorAll('.sp');
+  sps.forEach(function(b) {
+    b.onclick = function() {
+      rate = parseFloat(b.getAttribute('data-rate'));
+      sps.forEach(function(x) { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
+      b.classList.add('on');
+      b.setAttribute('aria-pressed', 'true');
+    };
+  });
+
+  document.getElementById('play').onclick = function() {
+    if (!synth) { alert('이 브라우저는 음성 읽기를 지원하지 않습니다.'); return; }
+    synth.cancel();
+    LINES.forEach(function(t) {
+      var u = new SpeechSynthesisUtterance(t);
+      u.lang = 'ko-KR';
+      u.rate = rate;
+      synth.speak(u);
+    });
+  };
+  document.getElementById('stop').onclick = function() { if (synth) synth.cancel(); };
+</script>
+</body></html>
+"""
 
 
-def card_html(i: int, total: int, s: dict) -> str:
-    return (
-        '<div class="stage"><div class="card">'
-        '<div class="disc" aria-hidden="true"></div>'
-        f'<div class="count">{i + 1} / {total}</div>'
-        f'<div class="song">{htmllib.escape(s["title"])}</div>'
-        f'<div class="artist">{htmllib.escape(s["artist"])}</div>'
-        f'<div class="reason">{htmllib.escape(s["reason"])}</div>'
-        '</div></div>'
-    )
+def cards_html(songs: list) -> str:
+    out = []
+    for i, s in enumerate(songs, 1):
+        h = int(hashlib.md5((s["title"] + s["artist"]).encode("utf-8")).hexdigest()[:6], 16) % 360
+        c1 = f"hsl({h},85%,58%)"
+        c2 = f"hsl({(h + 55) % 360},85%,42%)"
+        c3 = f"hsl({(h + 180) % 360},90%,72%)"
+        label = f"{i}번 곡. {s['title']}, {s['artist']}. 누르면 유튜브에서 열립니다."
+        out.append(
+            f'<a class="card" href="{esc(youtube_url(s))}" target="_blank" rel="noopener noreferrer" '
+            f'aria-label="{esc(label)}" style="--c1:{c1};--c2:{c2};--c3:{c3}">'
+            f'<div class="art"><span class="num">{i}</span><div class="vinyl"></div></div>'
+            f'<div class="title">{esc(s["title"])}</div>'
+            f'<div class="artist">{esc(s["artist"])}</div>'
+            f'<div class="reason">{esc(s["reason"])}</div>'
+            '<div class="go">▶ 유튜브에서 듣기</div>'
+            '</a>'
+        )
+    return "".join(out)
+
+
+def render_carousel(result: dict, start: int):
+    lines = json.dumps(build_speech_lines(result), ensure_ascii=False).replace("</", "<\\/")
+    page = (CAROUSEL_TEMPLATE
+            .replace("__LINES__", lines)
+            .replace("__START__", str(int(start)))
+            .replace("__CARDS__", cards_html(result["songs"])))
+    components.html(page, height=446, scrolling=False)
 
 
 # ---------- 콜백 ----------
 def set_pending(kind: str):
     st.session_state.pending = kind
-
-
-def go_prev():
-    st.session_state.idx = max(0, st.session_state.idx - 1)
-
-
-def go_next():
-    total = len(st.session_state.result["songs"]) if st.session_state.result else 0
-    st.session_state.idx = min(max(total - 1, 0), st.session_state.idx + 1)
 
 
 def go_home():
@@ -478,19 +576,18 @@ if pending:
         with st.spinner("취향을 분석하고 노래를 찾는 중입니다. 잠시만 기다려 주세요."):
             res = recommend(text, COUNT, st.session_state.history if more else [])
         if more:
-            start = len(st.session_state.result["songs"])
+            st.session_state.start = len(st.session_state.result["songs"])
             st.session_state.result["songs"] += res["songs"]
-            st.session_state.idx = start
         else:
             st.session_state.query = text
             st.session_state.result = res
             st.session_state.history = []
-            st.session_state.idx = 0
+            st.session_state.start = 0
         st.session_state.history += [s["title"] for s in res["songs"]]
         st.session_state.page = "result"
         st.session_state.error = ""
     except Exception as e:
-        st.session_state.error = friendly_error(e) if not isinstance(e, ValueError) else str(e)
+        st.session_state.error = str(e) if isinstance(e, ValueError) else friendly_error(e)
 
 
 # ---------- 첫 화면 ----------
@@ -547,56 +644,35 @@ def render_result():
     result = st.session_state.result
     if not result or not result.get("songs"):
         st.session_state.page = "home"
-        st.rerun()
+        render_home()
         return
 
-    songs = result["songs"]
-    total = len(songs)
-    idx = min(max(st.session_state.idx, 0), total - 1)
-    st.session_state.idx = idx
-    s = songs[idx]
+    a = result.get("analysis", {})
+    chips = []
+    for key in ("mood", "genre"):
+        v = a.get(key)
+        if isinstance(v, list):
+            chips += [str(x) for x in v if x]
+    chips_html = "".join(f'<span class="chip">{esc(c)}</span>' for c in chips[:6])
+    summary = esc(a.get("summary", ""))
 
-    st.markdown('<div class="hero"><h1 class="brand">추천 노래</h1></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div><span class="rtitle">🎵 추천 노래</span>'
+        f'<div class="rsum">{summary}</div>{chips_html}</div>',
+        unsafe_allow_html=True,
+    )
+
     if st.session_state.error:
         st.error(st.session_state.error)
 
-    st.markdown(card_html(idx, total, s), unsafe_allow_html=True)
+    render_carousel(result, st.session_state.start)
 
-    st.link_button("▶ 유튜브에서 듣기", youtube_url(s), use_container_width=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.button("◀ 이전 곡", on_click=go_prev, disabled=(idx == 0), use_container_width=True)
-    with c2:
-        st.button("다음 곡 ▶", on_click=go_next, disabled=(idx >= total - 1), use_container_width=True)
-
-    a = result.get("analysis", {})
-    st.subheader("내 취향 분석")
-    if a.get("summary"):
-        st.write(str(a["summary"]))
-    if join_list(a.get("mood")):
-        st.write("분위기: " + join_list(a["mood"]))
-    if join_list(a.get("genre")):
-        st.write("장르: " + join_list(a["genre"]))
-    if a.get("situation"):
-        st.write("어울리는 상황: " + str(a["situation"]))
-
-    st.subheader("전체 곡 목록")
-    for i, song in enumerate(songs, 1):
-        st.write(f"{i}번. {song['title']} - {song['artist']}")
-        st.link_button(f"{i}번 곡 유튜브에서 듣기", youtube_url(song), key=f"yt_{i}")
-
-    st.subheader("소리로 듣기")
-    speed = st.select_slider("읽는 속도", options=["느리게", "보통", "빠르게"], value="보통")
-    rate = {"느리게": 0.8, "보통": 1.0, "빠르게": 1.3}[speed]
-    try:
-        speak_component(build_speech_lines(result), rate)
-    except Exception:
-        st.info("소리 읽기 기능을 불러오지 못했습니다. 스크린 리더로 위 내용을 읽어 주세요.")
-
-    st.button("🔄 다른 곡 더 추천받기", use_container_width=True,
-              on_click=set_pending, args=("more",))
-    st.button("✏️ 다시 입력하기", use_container_width=True, on_click=go_home)
+    b1, b2 = st.columns(2)
+    with b1:
+        st.button("🔄 다른 곡 더 추천받기", use_container_width=True,
+                  on_click=set_pending, args=("more",))
+    with b2:
+        st.button("✏️ 다시 입력하기", use_container_width=True, on_click=go_home)
 
 
 if st.session_state.page == "result":
