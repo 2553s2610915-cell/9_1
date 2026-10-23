@@ -54,10 +54,17 @@ st.markdown("""
         font-size: 1.2rem !important;
         font-weight: bold !important;
     }
+    .permission-card {
+        background-color: #f0f2f5;
+        border-left: 5px solid #1890ff;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 음성 재생 JS 함수 (문자열 이스케이프 이중 처리로 SyntaxError 예방)
+# 2. 음성 재생 JS 함수
 def speak_text(text):
     """브라우저의 Web Speech API(TTS)를 사용하여 한국어 음성을 출력하는 HTML/JS 렌더링"""
     clean_text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
@@ -75,12 +82,77 @@ def speak_text(text):
     """
     st.components.v1.html(js_code, height=0, width=0)
 
-# 3. Gemini Client 초기화 함수
+# 3. 카메라 권한 확인 및 요청 컴포넌트 함수
+def render_camera_permission_check():
+    """브라우저의 카메라 접근 권한 상태를 확인하고 허용을 유도하는 HTML/JS 컴포넌트"""
+    permission_html = """
+    <div style="background-color: #e6f7ff; border: 2px solid #91d5ff; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+        <h4 style="margin:0 0 8px 0; color: #0050b3;">📷 카메라 접근 권한 확인</h4>
+        <p id="perm-status" style="margin: 0 0 10px 0; font-size: 14px; color: #262626;">권한 상태를 확인하고 있습니다...</p>
+        <button id="perm-btn" onclick="requestCameraPermission()" style="padding: 8px 16px; font-size: 14px; font-weight: bold; background-color: #1890ff; color: white; border: none; border-radius: 6px; cursor: pointer;">
+            카메라 권한 요청 / 확인
+        </button>
+    </div>
+
+    <script>
+    function updateStatus(message, isSuccess) {
+        var statusEl = document.getElementById('perm-status');
+        if (statusEl) {
+            statusEl.innerText = message;
+            statusEl.style.color = isSuccess ? '#389e0d' : '#cf1322';
+            statusEl.style.fontWeight = 'bold';
+        }
+    }
+
+    async function checkPermission() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            updateStatus('이 브라우저는 카메라 접근을 지원하지 않거나 HTTPS 보안 연결이 아닙니다.', false);
+            return;
+        }
+
+        try {
+            if (navigator.permissions && navigator.permissions.query) {
+                const result = await navigator.permissions.query({ name: 'camera' });
+                if (result.state === 'granted') {
+                    updateStatus('✅ 카메라 권한이 허용되었습니다. 아래 카메라 창을 이용하세요.', true);
+                } else if (result.state === 'prompt') {
+                    updateStatus('⚠️ 카메라 권한 승인이 필요합니다. 아래 버튼을 눌러 허용해 주세요.', false);
+                } else if (result.state === 'denied') {
+                    updateStatus('❌ 카메라 권한이 차단되어 있습니다. 브라우저 주소창 왼쪽의 자물쇠/설정 아이콘을 눌러 권한을 허용으로 변경해 주세요.', false);
+                }
+            }
+        } catch (e) {
+            console.log("Permission Query API 미지원:", e);
+        }
+    }
+
+    async function requestCameraPermission() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            updateStatus('✅ 카메라 접근이 승인되었습니다!', true);
+            // 권한 획득 후 스트림 즉시 해제 (Streamlit camera_input이 사용할 수 있도록)
+            stream.getTracks().forEach(track => track.stop());
+        } catch (err) {
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                updateStatus('❌ 카메라 접근이 거부되었습니다. 주소창 자물쇠 아이콘에서 카메라 권한을 [허용]으로 바꿔주세요.', false);
+            } else {
+                updateStatus('카메라 접근 오류: ' + err.message, false);
+            }
+        }
+    }
+
+    // 페이지 로드시 자동 권한 상태 체크
+    checkPermission();
+    </script>
+    """
+    st.components.v1.html(permission_html, height=135)
+
+# 4. Gemini Client 초기화 함수
 @st.cache_resource
 def get_gemini_client(api_key_value):
     return genai.Client(api_key=api_key_value)
 
-# 4. 헤더 영역
+# 5. 헤더 영역
 st.markdown("<h1 class='main-title'>👁️ 음성 이미지</h1>", unsafe_allow_html=True)
 st.caption("시각장애인을 위한 전방 실시간 장애물 감지 및 음성 안내 앱")
 
@@ -101,13 +173,17 @@ except Exception as e:
     st.error(f"API 클라이언트 초기화 오류: {e}")
     st.stop()
 
-# 5. 안내 문구
-with st.expander("ℹ️ 사용 방법 및 음성 설정", expanded=False):
+# 6. 안내 문구 및 카메라 권한 체크 UI
+with st.expander("ℹ️ 사용 방법 및 권한 안내", expanded=False):
     st.write("""
-    1. 아래 **'전방 향해 카메라 찍기'** 버튼으로 사진을 촬영합니다.
-    2. AI가 이미지를 분석하여 위험도와 위치를 파악합니다.
-    3. 장애물이 감지되면 **음성(TTS)**으로 즉각 알려줍니다.
+    1. 브라우저 팝업이 뜨면 **'카메라 권한 허용'**을 눌러주세요.
+    2. 아래 **'전방 촬영'** 버튼으로 사진을 찍습니다.
+    3. AI가 이미지를 분석하여 위험도와 위치를 파악합니다.
+    4. 장애물이 감지되면 **음성(TTS)**으로 즉각 알려줍니다.
     """)
+
+# 카메라 권한 상태 확인 카드 렌더링
+render_camera_permission_check()
 
 st.subheader("📷 전방 화면 촬영")
 camera_image = st.camera_input("전방을 촬영하세요", label_visibility="visible")
@@ -121,84 +197,3 @@ def analyze_image(image_bytes):
     반드시 다음 구조의 JSON 형식으로만 응답하세요:
     {
       "risk_level": "DANGER",
-      "voice_message": "전방 중앙 1미터 앞에 계단이 있습니다. 주의하세요.",
-      "summary": "전방 계단 감지됨",
-      "detected_objects": ["계단", "기둥"]
-    }
-
-    위험도 기준(risk_level):
-    - DANGER: 바로 앞(1~2m 이내)에 충돌/낙상 위험 요소가 있음.
-    - WARNING: 진행 방향 주변에 장애물이 있어 주의가 필요함.
-    - SAFE: 전방 보행에 장애물이 없고 안전함.
-    """
-
-    try:
-        image = Image.open(io.BytesIO(image_bytes))
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash-lite',
-            contents=[image, prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2
-            )
-        )
-        
-        return json.loads(response.text)
-    except json.JSONDecodeError:
-        return {
-            "risk_level": "WARNING",
-            "voice_message": "분석 결과를 처리하는 중 형식이 맞지 않습니다. 다시 시도해 주세요.",
-            "summary": "응답 형식 오류",
-            "detected_objects": []
-        }
-    except Exception as e:
-        return {
-            "risk_level": "WARNING",
-            "voice_message": f"분석 중 오류가 발생했습니다: {str(e)}",
-            "summary": "API 처리 오류",
-            "detected_objects": []
-        }
-
-# 6. 카메라 이미지 감지 처리
-if camera_image:
-    bytes_data = camera_image.getvalue()
-    
-    with st.spinner("🔍 전방 장애물 분석 및 위험 감지 중..."):
-        analysis = analyze_image(bytes_data)
-
-    risk_level = analysis.get("risk_level", "SAFE")
-    voice_msg = analysis.get("voice_message", "분석 결과가 없습니다.")
-    summary = analysis.get("summary", "")
-    detected_objects = analysis.get("detected_objects", [])
-
-    box_class = "safe-box"
-    status_title = "✅ 안전"
-    if risk_level == "DANGER":
-        box_class = "danger-box"
-        status_title = "🚨 위험 경고"
-    elif risk_level == "WARNING":
-        box_class = "warning-box"
-        status_title = "⚠️ 주의 필요"
-
-    st.markdown(f"""
-        <div class="status-card {box_class}">
-            <h2>{status_title}</h2>
-            <p class="alert-text">"{voice_msg}"</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # 음성 출력
-    speak_text(voice_msg)
-
-    if st.button("🔊 안내 음성 다시 듣기"):
-        speak_text(voice_msg)
-
-    st.markdown("### 📋 감지 상세 정보")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**상황 요약:**", summary)
-    with col2:
-        st.write("**감지된 항목:**", ", ".join(detected_objects) if detected_objects else "없음")
-else:
-    st.info("👆 위 카메라 창에서 사진을 찍으면 전방 장애물 감지 및 음성 안내가 시작됩니다.")
