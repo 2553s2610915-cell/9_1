@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="소리눈 | 실시간 장애물 감지",
@@ -79,14 +78,12 @@ st.markdown(
 
 st.markdown("### 실시간 카메라")
 
-app_html = r"""
-<!DOCTYPE html>
+app_html = """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- TensorFlow.js 및 COCO-SSD 스크립트 -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 
@@ -148,7 +145,9 @@ video, canvas {
   height: auto;
   display: block;
 }
-/* 후면/전면 상관없이 캔버스와 영상을 동기화하기 위해 scaleX(-1) 제거 */
+video {
+  transform: scaleX(-1);
+}
 canvas {
   position: absolute;
   left: 0;
@@ -180,7 +179,7 @@ canvas {
 </div>
 
 <div id="status" role="status" aria-live="polite">
-  준비 중입니다. 감지 시작 버튼을 누르세요.
+  준비 완료. '감지 시작' 버튼을 누르세요.
 </div>
 
 <div id="videoWrap">
@@ -198,9 +197,7 @@ canvas {
 </p>
 
 <script>
-(() => {
-  "use strict";
-
+window.addEventListener("load", () => {
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
@@ -246,4 +243,85 @@ canvas {
     if (!voiceEnabled || !("speechSynthesis" in window)) return;
 
     const now = Date.now();
-    if (!force && message === last
+    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) return;
+    if (!force && now - lastSpokenAt < 3500) return;
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.lang = "ko-KR";
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const koreanVoice = voices.find(v => v.lang.toLowerCase().startsWith("ko"));
+      if (koreanVoice) utterance.voice = koreanVoice;
+
+      window.speechSynthesis.speak(utterance);
+      lastSpoken = message;
+      lastSpokenAt = now;
+    } catch (error) {
+      logEl.textContent = "음성 안내 오류: " + error.message;
+    }
+  }
+
+  function stopCamera() {
+    running = false;
+    generation++;
+
+    if (animationId !== null) {
+      cancelAnimationFrame(animationId);
+      animationId = null;
+    }
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    video.srcObject = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    setStatus("감지가 정지되었습니다.");
+    logEl.textContent = "카메라가 종료되었습니다.";
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  async function loadModel() {
+    if (model) return model;
+
+    setStatus("AI 모델을 불러오는 중입니다...");
+
+    if (!window.tf || !window.cocoSsd) {
+      throw new Error("TensorFlow.js 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
+    }
+
+    await window.tf.ready();
+    model = await window.cocoSsd.load();
+    return model;
+  }
+
+  function getDescription(prediction) {
+    const name = labels[prediction.class] || prediction.class;
+    const [x, y, width, height] = prediction.bbox;
+    const videoWidth = video.videoWidth || 1;
+    const videoHeight = video.videoHeight || 1;
+
+    const centerX = (x + width / 2) / videoWidth;
+    const areaRatio = (width * height) / (videoWidth * videoHeight);
+
+    let direction = "전방";
+    if (centerX < 0.35) direction = "왼쪽 전방";
+    else if (centerX > 0.65) direction = "오른쪽 전방";
+
+    const visuallyLarge = areaRatio > 0.16;
+    const centrallyLocated = centerX >= 0.25 && centerX <= 0.75;
+
+    return { name, direction, visuallyLarge, centrallyLocated };
+  }
+
+  async function
