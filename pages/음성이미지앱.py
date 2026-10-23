@@ -1,16 +1,16 @@
 import streamlit as st
-import cv2
-import numpy as np
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
+from PIL import Image
+from google import genai
+import io
 
-# 1. 페이지 기본 설정
+# 페이지 설정
 st.set_page_config(
-    page_title="시각장애인을 위한 장애물 감지 경고 시스템",
-    page_icon="🦯",
-    layout="wide"
+    page_title="아이즈 가드 - 보행 안전 도우미",
+    page_icon="👁️",
+    layout="centered"
 )
 
-# 2. Custom CSS
+# CSS 스타일링 (크고 직관적인 UI)
 st.markdown("""
     <style>
     .main-title {
@@ -18,146 +18,111 @@ st.markdown("""
         font-weight: bold;
         color: #1E3A8A;
         text-align: center;
-        margin-bottom: 20px;
+        margin-bottom: 0.5rem;
+    }
+    .sub-title {
+        font-size: 1.1rem;
+        color: #4B5563;
+        text-align: center;
+        margin-bottom: 2rem;
     }
     .warning-box {
-        padding: 15px;
+        padding: 1.5rem;
         border-radius: 10px;
-        background-color: #FEE2E2;
-        border: 2px solid #EF4444;
-        color: #991B1B;
+        background-color: #FEF3C7;
+        border: 2px solid #F59E0B;
+        font-size: 1.3rem;
         font-weight: bold;
-        font-size: 1.2rem;
+        color: #92400E;
         text-align: center;
-        margin-bottom: 15px;
+        margin-top: 1rem;
     }
     .safe-box {
-        padding: 15px;
+        padding: 1.5rem;
         border-radius: 10px;
         background-color: #D1FAE5;
         border: 2px solid #10B981;
-        color: #065F46;
+        font-size: 1.3rem;
         font-weight: bold;
-        font-size: 1.2rem;
+        color: #065F46;
         text-align: center;
-        margin-bottom: 15px;
+        margin-top: 1rem;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">🦯 실시간 장애물 감지 및 음성 안내 시스템</div>', unsafe_allow_html=True)
+# 헤더 영역
+st.markdown('<div class="main-title">👁️ 아이즈 가드 (Eyes Guard)</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">전방의 장애물을 실시간으로 감지하고 음성으로 안내합니다.</div>', unsafe_allow_html=True)
 
-# 3. 사이드바 설정
-st.sidebar.title("⚙️ 감지 및 알림 설정")
-min_confidence = st.sidebar.slider("장애물 감지 민감도", 0.1, 0.9, 0.4, 0.05)
-danger_threshold = st.sidebar.slider("위험 판단 영역 비율 (%)", 10, 60, 25, 5)
+# API Key 확인
+if "GEMINI_API_KEY" not in st.secrets:
+    st.error("⚠️ Streamlit Secrets에 `GEMINI_API_KEY`가 설정되어 있지 않습니다. 설정 방법을 확인해주세요.")
+    st.stop()
 
-# 4. 브라우저 내장 Web Speech API 기반 음성 출력 함수 (SyntaxError 방지 처리 완료)
-def speak_text(text):
-    if text:
-        js_code = f"""
-        <script>
-            var msg = new SpeechSynthesisUtterance("{text}");
-            msg.lang = 'ko-KR';
-            msg.rate = 1.1;
-            window.speechSynthesis.speak(msg);
-        </script>
-        """
-        st.components.v1.html(js_code, height=0)
+# 브라우저 음성 합성(TTS) 실행 함수
+def speak_message(text):
+    safe_text = text.replace("'", "\\'").replace('"', '\\"')
+    js_code = f"""
+    <script>
+        if ('speechSynthesis' in window) {{
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance("{safe_text}");
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }}
+    </script>
+    """
+    st.components.v1.html(js_code, height=0)
 
-# 5. 영상 처리 클래스
-class ObstacleDetector(VideoProcessorBase):
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        height, width, _ = img.shape
+# 카메라 입력 또는 이미지 업로드
+st.markdown("### 📷 전방 촬영")
+camera_image = st.camera_input("스마트폰 카메라로 앞을 비추고 촬영 버튼을 누르세요.")
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 50, 150)
-
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+if camera_image is not None:
+    try:
+        # 이미지 열기
+        image = Image.open(camera_image)
+        st.image(image, caption="촬영된 전방 시야", use_container_width=True)
         
-        detected_obstacles = []
-        
-        for cnt in contours:
-            area = cv2.contourArea(cnt)
-            if area > (width * height * (min_confidence * 0.015)):
-                x, y, w, h = cv2.boundingRect(cnt)
-                
-                bbox_area_ratio = (w * h) / (width * height) * 100
-                
-                center_x = x + w / 2
-                if center_x < width / 3:
-                    position = "좌측"
-                elif center_x > (width * 2) / 3:
-                    position = "우측"
-                else:
-                    position = "전방 중앙"
-
-                is_danger = bbox_area_ratio >= danger_threshold
-
-                color = (0, 0, 255) if is_danger else (0, 255, 0)
-                cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
-                
-                label = f"{position} ({int(bbox_area_ratio)}%)"
-                cv2.putText(img, label, (x, max(y - 10, 20)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-                if is_danger:
-                    detected_obstacles.append((position, bbox_area_ratio))
-
-        if detected_obstacles:
-            detected_obstacles.sort(key=lambda item: item[1], reverse=True)
-            top_obstacle = detected_obstacles[0]
-            st.session_state['warning_msg'] = f"⚠️ {top_obstacle[0]}에 위험 장애물 접근!"
-            st.session_state['speech_text'] = f"주의! {top_obstacle[0]}에 장애물이 있습니다."
-        else:
-            st.session_state['warning_msg'] = "✅ 이동 경로에 위험 장애물이 없습니다."
-            st.session_state['speech_text'] = ""
-
-        return frame.from_ndarray(img, format="bgr24")
-
-# 6. 메인 화면 레이아웃
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    st.subheader("📹 실시간 웹캠 화면 분석")
-    rtc_config = RTCConfiguration(
-        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
-    
-    webrtc_ctx = webrtc_streamer(
-        key="obstacle-detection",
-        mode=WebRtcMode.SENDRECV,
-        rtc_configuration=rtc_config,
-        video_processor_factory=ObstacleDetector,
-        media_stream_constraints={"video": True, "audio": False},
-    )
-
-with col2:
-    st.subheader("📢 알림 및 상태 안내")
-    
-    status_container = st.empty()
-    
-    if 'warning_msg' in st.session_state:
-        msg = st.session_state['warning_msg']
-        if "⚠️" in msg:
-            html_content = f'<div class="warning-box">{msg}</div>'
-            status_container.markdown(html_content, unsafe_allow_html=True)
+        with st.spinner("🤖 AI가 전방 위험 요소를 분석 중입니다..."):
+            # Gemini 클라이언트 초기화
+            client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             
-            speech = st.session_state.get('speech_text', '')
-            if speech:
-                speak_text(speech)
-        else:
-            html_content = f'<div class="safe-box">{msg}</div>'
-            status_container.markdown(html_content, unsafe_allow_html=True)
-    else:
-        status_container.info("카메라 [START] 버튼을 누르면 장애물 감지가 시작됩니다.")
+            prompt = (
+                "이 사진은 시각장애인의 전방 시야입니다. 앞에 부딪힐 만한 장애물이나 위험 요소(계단, 공사중, 기둥, "
+                "사람 밀집 지역, 차량 등)가 있는지 분석해주세요. "
+                "만약 위험 요소가 있다면 '주의! [위험 내용]이 있습니다. 조심하세요.' 형태로 1~2문장으로 간결하게 답해주세요. "
+                "위험 요소가 없다면 '안전합니다. 길에 장애물이 없습니다.'라고 답해주세요."
+            )
+            
+            # Gemini 2.5 Flash Lite 모델 호출
+            response = client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=[image, prompt]
+            )
+            
+            result_text = response.text
+            
+            # 결과 출력 및 음성 안내
+            if "주의" in result_text or "위험" in result_text or "조심" in result_text:
+                st.markdown(f'<div class="warning-box">🚨 {result_text}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="safe-box">✅ {result_text}</div>', unsafe_allow_html=True)
+                
+            # 음성으로 읽어주기
+            speak_message(result_text)
 
-    st.markdown("---")
-    st.markdown("### 💡 사용 가이드")
-    st.markdown("""
-    1. **웹캠 실행**: 비디오 화면의 **[START]** 버튼을 클릭하고 브라우저의 카메라 권한을 허용해 주세요.
-    2. **음성 출력**: 스마트폰이나 PC의 스피커 볼륨이 켜져 있는지 확인해 주세요.
-    3. **민감도 조절**: 사물 인식 반응 속도나 감도를 조절하고 싶을 경우, 좌측 사이드바의 슬라이더를 조정하세요.
-    """)
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {e}")
+
+# 안내 사항
+with st.expander("ℹ️ 이용 안내 및 팁"):
+    st.write(
+        """
+        - 스마트폰의 후면 카메라를 전방으로 향하게 하고 촬영 버튼을 누르면 AI가 분석을 시작합니다.
+        - 분석 결과는 화면에 표시되는 동시에 **자동으로 음성 안내**됩니다.
+        - 본 앱은 보행 보조 참고용으로 사용되며, 실제 보행 시 주변 상황을 항상 주의하시기 바랍니다.
+        """
+    )
