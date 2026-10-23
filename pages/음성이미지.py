@@ -79,8 +79,7 @@ if img_file is not None:
         st.audio(sound_file, format="audio/mp3")
         st.caption("🔊 음성이 자동으로 재생되지 않으면 위 플레이어의 재생 버튼을 누르세요.")
         
-    except genai.types.generation_types.BlockedPromptException:
-        st.error("안전 정책에 의해 분석이 차단되었습니다. 다른 이미지를 시도해주세요.")
     except Exception as e:
         st.error(f"오류가 발생했습니다: {e}\n잠시 후 다시 시도해주세요.")
+
 
