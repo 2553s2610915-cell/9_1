@@ -1,16 +1,14 @@
 import streamlit as st
-from PIL import Image
 from google import genai
-import io
 
 # 페이지 설정
 st.set_page_config(
-    page_title="아이즈 가드 - 보행 안전 도우미",
-    page_icon="👁️",
+    page_title="아이즈 가드 (음성 보행 도우미)",
+    page_icon="🎙️",
     layout="centered"
 )
 
-# CSS 스타일링 (크고 직관적인 UI)
+# CSS 스타일링
 st.markdown("""
     <style>
     .main-title {
@@ -52,12 +50,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 헤더 영역
-st.markdown('<div class="main-title">👁️ 아이즈 가드 (Eyes Guard)</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">전방의 장애물을 실시간으로 감지하고 음성으로 안내합니다.</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🎙️ 아이즈 가드 (음성 도우미)</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">주변 상황을 말로 설명하거나 소리를 녹음하면 AI가 안전을 안내합니다.</div>', unsafe_allow_html=True)
 
 # API Key 확인
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("⚠️ Streamlit Secrets에 `GEMINI_API_KEY`가 설정되어 있지 않습니다. 설정 방법을 확인해주세요.")
+    st.error("⚠️ Streamlit Secrets에 `GEMINI_API_KEY`가 설정되어 있지 않습니다.")
     st.stop()
 
 # 브라우저 음성 합성(TTS) 실행 함수
@@ -76,31 +74,35 @@ def speak_message(text):
     """
     st.components.v1.html(js_code, height=0)
 
-# 카메라 입력 또는 이미지 업로드
-st.markdown("### 📷 전방 촬영")
-camera_image = st.camera_input("스마트폰 카메라로 앞을 비추고 촬영 버튼을 누르세요.")
+# 오디오 입력 영역
+st.markdown("### 🗣️ 음성으로 상황 전달하기")
+audio_file = st.audio_input("마이크 버튼을 누르고 주변 상황을 말씀해주세요 (예: '앞에 계단이 있는 것 같아', '여기가 건널목이야?')")
 
-if camera_image is not None:
+if audio_file is not None:
     try:
-        # 이미지 열기
-        image = Image.open(camera_image)
-        st.image(image, caption="촬영된 전방 시야", use_container_width=True)
+        st.audio(audio_file)
         
-        with st.spinner("🤖 AI가 전방 위험 요소를 분석 중입니다..."):
+        with st.spinner("🤖 AI가 음성을 분석하고 안전 지침을 생성 중입니다..."):
+            # 업로드된 오디오 바이너리 읽기
+            audio_bytes = audio_file.read()
+            
             # Gemini 클라이언트 초기화
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             
             prompt = (
-                "이 사진은 시각장애인의 전방 시야입니다. 앞에 부딪힐 만한 장애물이나 위험 요소(계단, 공사중, 기둥, "
-                "사람 밀집 지역, 차량 등)가 있는지 분석해주세요. "
-                "만약 위험 요소가 있다면 '주의! [위험 내용]이 있습니다. 조심하세요.' 형태로 1~2문장으로 간결하게 답해주세요. "
-                "위험 요소가 없다면 '안전합니다. 길에 장애물이 없습니다.'라고 답해주세요."
+                "이것은 시각장애인이 주변 상황을 음성으로 설명하거나 녹음한 파일입니다. "
+                "사용자의 상황과 고민을 바탕으로 현재 예상되는 위험 요소를 분석하고, "
+                "1~2문장으로 간결하고 명확하게 주의 사항이나 대처 방법을 안내해주세요. "
+                "예: '주의! 앞에 계단이 있을 수 있으니 지팡이로 확인하며 천천히 이동하세요.'"
             )
             
-            # Gemini 2.5 Flash Lite 모델 호출
+            # Gemini 2.5 Flash Lite 모델 호출 (오디오 데이터 전달)
             response = client.models.generate_content(
                 model='gemini-2.5-flash-lite',
-                contents=[image, prompt]
+                contents=[
+                    {"mime_type": "audio/wav", "data": audio_bytes},
+                    prompt
+                ]
             )
             
             result_text = response.text
@@ -118,11 +120,10 @@ if camera_image is not None:
         st.error(f"오류가 발생했습니다: {e}")
 
 # 안내 사항
-with st.expander("ℹ️ 이용 안내 및 팁"):
+with st.expander("ℹ️ 이용 안내"):
     st.write(
         """
-        - 스마트폰의 후면 카메라를 전방으로 향하게 하고 촬영 버튼을 누르면 AI가 분석을 시작합니다.
-        - 분석 결과는 화면에 표시되는 동시에 **자동으로 음성 안내**됩니다.
-        - 본 앱은 보행 보조 참고용으로 사용되며, 실제 보행 시 주변 상황을 항상 주의하시기 바랍니다.
+        - 카메라를 직접 맞추기 어려운 상황에서 스마트폰 마이크 버튼을 누르고 음성으로 주변을 설명하세요.
+        - AI가 음성을 인식하여 건널목 안전, 장애물 유무, 이동 방향 등을 음성으로 피드백해 줍니다.
         """
     )
