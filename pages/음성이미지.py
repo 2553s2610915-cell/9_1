@@ -1,365 +1,86 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import google.generativeai as genai
+from gtts import gTTS
+import io
+import base64
 
-st.set_page_config(
-    page_title="소리눈 | 실시간 장애물 감지",
-    page_icon="🔊",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-
-st.markdown(
-    """
+# 1. 페이지 기본 설정 및 스타일 (시각장애인을 위한 큰 글씨 및 대비)
+st.set_page_config(page_title="보이스 아이 (Voice Eye)", layout="centered")
+st.markdown("""
     <style>
-    .stApp {
-        background: #101820;
-        color: #F4F7FA;
-    }
-    h1, h2, h3, p, label {
-        color: #F4F7FA !important;
-    }
-    .hero {
-        background: linear-gradient(135deg, #183B4E, #145A50);
-        padding: 24px;
-        border-radius: 18px;
-        border: 1px solid #34776E;
-        margin-bottom: 18px;
-    }
-    .hero h1 {
-        font-size: 2.1rem;
-        margin: 0 0 8px 0;
-    }
-    .hero p {
-        font-size: 1.05rem;
-        margin: 0;
-    }
-    .notice {
-        background: #292B20;
-        border-left: 5px solid #F4C95D;
-        padding: 14px 16px;
-        border-radius: 8px;
-        margin: 12px 0;
-    }
+    .big-font { font-size:24px !important; font-weight: bold; }
+    .warning-font { font-size:20px !important; color: red; font-weight: bold; }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
+    """, unsafe_allow_html=True)
 
-st.markdown(
-    """
-    <div class="hero">
-        <h1>🔊 소리눈</h1>
-        <p>카메라로 주변을 살피고, 음성으로 전방의 물체를 알려주는 보행 보조 시제품</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown('<p class="big-font">👁️ 보이스 아이 (Voice Eye)</p>', unsafe_allow_html=True)
+st.write("앞에 있는 상황을 촬영하거나 사진을 업로드하시면 위험 요소를 분석하여 음성으로 알려드립니다.")
 
-st.markdown("### 사용 방법")
-st.markdown(
-    """
-    1. 아래 화면에서 **감지 시작**을 누르고 카메라 사용을 허용합니다.
-    2. 카메라를 전방으로 향하게 합니다.
-    3. 감지된 물체가 화면 중앙에 있거나 크게 보이면 음성 안내를 확인합니다.
-    4. 이동을 멈추거나 사용을 마치면 **감지 정지**를 누릅니다.
-    """
-)
+# 2. API 키 설정 및 예외 처리
+if "GEMINI_API_KEY" in st.secrets:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+else:
+    st.error("Secrets 설정에서 GEMINI_API_KEY를 입력해주세요.")
+    st.stop()
 
-st.markdown(
-    """
-    <div class="notice">
-    <strong>안전 안내</strong><br>
-    물체의 크기는 실제 거리와 같지 않습니다. 이 앱은 실제 충돌 거리나
-    안전한 보행 경로를 보장하지 않습니다. 보행 중에는 지팡이·안내견 등
-    기존 보조 수단을 계속 사용하고, 주변을 직접 확인하세요.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+# 3. 이미지 입력 (카메라 촬영 및 파일 업로드 통합)
+img_file = st.camera_input("정면을 향해 사진을 촬영하세요")
 
-st.markdown("### 실시간 카메라")
+# 카메라를 지원하지 않는 환경을 위한 파일 업로드 백업
+if not img_file:
+    img_file = st.file_uploader("또는 사진 파일을 선택하세요", type=["jpg", "jpeg", "png"])
 
-app_html = """<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+# 4. 이미지 분석 및 TTS 변환 프로세스
+if img_file is not None:
+    try:
+        # 이미지 데이터 읽기
+        image_bytes = img_file.read()
+        
+        st.info("🔄 전방 상황을 분석하고 있습니다. 잠시만 기다려주세요...")
+        
+        # Gemini 2.5 Flash-lite 모델 설정
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
+        
+        # 시각장애인 맞춤형 충돌 경고 프롬프트
+        prompt = (
+            "당신은 앞을 볼 수 없는 시각장애인의 보행을 돕는 AI 조수입니다. "
+            "보내진 사진을 보고, 사용자의 바로 앞에 충돌 위험이 있는 장애물(예: 턱, 계단, 사람, 전동킥보드, 차량 등)이 있는지 확인하세요. "
+            "지나치게 상세한 설명은 배제하고, '조심하세요, 전방에 XX가 있습니다' 또는 '안전합니다'와 같이 "
+            "시각장애인이 즉각 상황을 인지할 수 있도록 짧고 단호한 경고 문장(한국어 2~3문장 이내)으로만 답변하세요."
+        )
+        
+        # 이미지 분석 요청
+        response = model.generate_content([
+            prompt,
+            {"mime_type": "image/jpeg", "data": image_bytes}
+        ])
+        
+        analysis_text = response.text
+        
+        # 결과 화면 표시
+        st.markdown('<p class="warning-font">🚨 안내 메시지</p>', unsafe_allow_html=True)
+        st.success(analysis_text)
+        
+        # 5. gTTS를 활용한 음성 변환 (한국어)
+        tts = gTTS(text=analysis_text, lang='ko')
+        sound_file = io.BytesIO()
+        tts.write_to_fp(sound_file)
+        sound_file.seek(0)
+        
+        # 6. 자동 재생을 위한 HTML 오디오 코드 삽입 (UX 차별화)
+        b64 = base64.b64encode(sound_file.read()).decode()
+        md = f"""
+            <audio autoplay="true">
+            <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
+            </audio>
+            """
+        st.markdown(md, unsafe_allow_html=True)
+        st.audio(sound_file, format="audio/mp3")
+        st.caption("🔊 음성이 자동으로 재생되지 않으면 위 플레이어의 재생 버튼을 누르세요.")
+        
+    except genai.types.generation_types.BlockedPromptException:
+        st.error("안전 정책에 의해 분석이 차단되었습니다. 다른 이미지를 시도해주세요.")
+    except Exception as e:
+        st.error(f"오류가 발생했습니다: {e}\n잠시 후 다시 시도해주세요.")
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-
-<style>
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  padding: 12px;
-  background: #101820;
-  color: #f4f7fa;
-  font-family: Arial, sans-serif;
-}
-button, select {
-  min-height: 50px;
-  font-size: 17px;
-  font-weight: bold;
-  border-radius: 10px;
-  padding: 10px 15px;
-}
-button {
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-button:focus, select:focus {
-  outline: 3px solid #f4c95d;
-  outline-offset: 3px;
-}
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-#start { background: #42d6a4; color: #09251c; }
-#stop { background: #ffcf70; color: #332300; }
-#voice { background: #d9e8ff; color: #102a43; }
-#status {
-  padding: 14px;
-  border-radius: 10px;
-  background: #263746;
-  font-size: 19px;
-  font-weight: bold;
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-#videoWrap {
-  width: 100%;
-  max-width: 760px;
-  margin: auto;
-  position: relative;
-  background: #05090d;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 2px solid #536575;
-  min-height: 220px;
-}
-video, canvas {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-video {
-  transform: scaleX(-1);
-}
-canvas {
-  position: absolute;
-  left: 0;
-  top: 0;
-  pointer-events: none;
-}
-#log {
-  background: #1c2a35;
-  border-radius: 10px;
-  padding: 14px;
-  margin-top: 12px;
-  min-height: 60px;
-  font-size: 16px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.small {
-  color: #c8d5df;
-  font-size: 14px;
-  line-height: 1.6;
-}
-</style>
-</head>
-<body>
-<div class="controls">
-  <button id="start">감지 시작</button>
-  <button id="stop" disabled>감지 정지</button>
-  <button id="voice" aria-pressed="true">음성 안내: 켜짐</button>
-</div>
-
-<div id="status" role="status" aria-live="polite">
-  준비 완료. '감지 시작' 버튼을 누르세요.
-</div>
-
-<div id="videoWrap">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-</div>
-
-<div id="log" role="status" aria-live="polite">
-  감지를 시작하면 물체 감지 결과가 여기에 표시됩니다.
-</div>
-
-<p class="small">
-  AI 모델: COCO-SSD · 브라우저 내 분석<br>
-  물체 크기는 대략적인 시각적 단서일 뿐 실제 거리 측정값이 아닙니다.
-</p>
-
-<script>
-window.addEventListener("DOMContentLoaded", () => {
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
-  const startBtn = document.getElementById("start");
-  const stopBtn = document.getElementById("stop");
-  const voiceBtn = document.getElementById("voice");
-  const statusEl = document.getElementById("status");
-  const logEl = document.getElementById("log");
-
-  let model = null;
-  let stream = null;
-  let running = false;
-  let busy = false;
-  let voiceEnabled = true;
-  let lastSpoken = "";
-  let lastSpokenAt = 0;
-  let lastDetectionAt = 0;
-  let animationId = null;
-  let generation = 0;
-
-  const labels = {
-    person: "사람",
-    bicycle: "자전거",
-    car: "자동차",
-    motorcycle: "오토바이",
-    bus: "버스",
-    truck: "트럭",
-    chair: "의자",
-    bench: "벤치",
-    suitcase: "여행 가방",
-    dog: "개",
-    potted plant: "화분",
-    dining table: "탁자",
-    couch: "소파",
-    skateboard: "스케이트보드"
-  };
-
-  function setStatus(message) {
-    statusEl.textContent = message;
-  }
-
-  function speak(message, force = false) {
-    if (!voiceEnabled || !("speechSynthesis" in window)) return;
-
-    const now = Date.now();
-    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) return;
-    if (!force && now - lastSpokenAt < 3500) return;
-
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(message);
-      utterance.lang = "ko-KR";
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-
-      const voices = window.speechSynthesis.getVoices();
-      const koreanVoice = voices.find(v => v.lang.toLowerCase().startsWith("ko"));
-      if (koreanVoice) utterance.voice = koreanVoice;
-
-      window.speechSynthesis.speak(utterance);
-      lastSpoken = message;
-      lastSpokenAt = now;
-    } catch (error) {
-      logEl.textContent = "음성 안내 오류: " + error.message;
-    }
-  }
-
-  function stopCamera() {
-    running = false;
-    generation++;
-
-    if (animationId !== null) {
-      cancelAnimationFrame(animationId);
-      animationId = null;
-    }
-
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      stream = null;
-    }
-
-    video.srcObject = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    setStatus("감지가 정지되었습니다.");
-    logEl.textContent = "카메라가 종료되었습니다.";
-
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
-  }
-
-  async function loadModel() {
-    if (model) return model;
-
-    setStatus("AI 모델을 불러오는 중입니다...");
-
-    if (!window.tf || !window.cocoSsd) {
-      throw new Error("TensorFlow.js 라이브러리를 불러오지 못했습니다. 인터넷 연결 상태를 확인하세요.");
-    }
-
-    await window.tf.ready();
-    model = await window.cocoSsd.load();
-    return model;
-  }
-
-  function getDescription(prediction) {
-    const name = labels[prediction.class] || prediction.class;
-    const [x, y, width, height] = prediction.bbox;
-    const videoWidth = video.videoWidth || 1;
-    const videoHeight = video.videoHeight || 1;
-
-    const centerX = (x + width / 2) / videoWidth;
-    const areaRatio = (width * height) / (videoWidth * videoHeight);
-
-    let direction = "전방";
-    if (centerX < 0.35) direction = "왼쪽 전방";
-    else if (centerX > 0.65) direction = "오른쪽 전방";
-
-    const visuallyLarge = areaRatio > 0.16;
-    const centrallyLocated = centerX >= 0.25 && centerX <= 0.75;
-
-    return { name, direction, visuallyLarge, centrallyLocated };
-  }
-
-  async function detectLoop(myGeneration) {
-    if (!running || myGeneration !== generation) return;
-    animationId = requestAnimationFrame(() => detectLoop(myGeneration));
-
-    if (busy || !model || video.readyState < 2) return;
-    if (Date.now() - lastDetectionAt < 250) return;
-
-    busy = true;
-    lastDetectionAt = Date.now();
-
-    try {
-      const predictions = await model.detect(video);
-      if (!running || myGeneration !== generation) return;
-
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-      if (!width || !height) return;
-
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-
-      ctx.clearRect(0, 0, width, height);
-
-      const relevant = predictions.filter(p => p.score >= 0.55);
-      const descriptions = relevant.map(p => ({
-        prediction: p,
-        ...getDescription(p)
-      }));
-
-      for (const item of descriptions) {
-        const [x, y, w, h] = item.prediction.bbox;
-        ctx.strokeStyle = item.visuallyLarge ? "#ff5252" : "#42d6a4";
-        ctx.lineWidth = Math.max(3, width / 200);
-        ctx.strokeRect(x, y, w, h);
-
-        const caption = (labels[item.prediction.class] || item.prediction.class) + " " + Math.round(item.prediction.
