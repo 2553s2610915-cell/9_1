@@ -22,51 +22,69 @@ st.markdown(
     """
     <style>
     html, body, [class*="css"] { font-size: 19px; }
-    .stApp { background: linear-gradient(120deg, #0a84ff 0%, #3aa0ff 55%, #7cc0ff 100%); }
+    .stApp {
+        background:
+            radial-gradient(circle at 12% 0%, rgba(138, 63, 252, 0.45) 0%, rgba(138, 63, 252, 0) 42%),
+            radial-gradient(circle at 92% 8%, rgba(255, 61, 110, 0.35) 0%, rgba(255, 61, 110, 0) 38%),
+            #0e0e14;
+    }
+    header[data-testid="stHeader"] { background: transparent; }
     .block-container, [data-testid="stMainBlockContainer"] { max-width: 920px; padding-top: 2rem; }
-    .stApp p, .stApp label, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
-    [data-testid="stAlert"] { background: #ffffff !important; border-radius: 14px; }
+    .stApp p, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
+    [data-testid="stAlert"] { background: #f4f1ff !important; border-radius: 14px; }
     [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: #111111 !important; }
 
     .hero { text-align: center; margin: 4px 0 14px 0; }
-    .hero .brand { font-size: 2.2rem; font-weight: 800; color: #ffffff; margin: 12px 0 0 0; padding: 0; }
-    .hero .sub { color: #eaf4ff; font-size: 1.05rem; margin-top: 4px; }
+    .hero .brand { font-size: 2.3rem; font-weight: 800; color: #ffffff; margin: 12px 0 0 0; padding: 0; }
+    .hero .sub { color: #d9d4ee; font-size: 1.05rem; margin-top: 4px; }
     .disc {
-        width: 96px; height: 96px; border-radius: 50%; margin: 0 auto; position: relative;
-        background: conic-gradient(from 0deg, #1b1464, #ff2d55, #6a11cb, #00c6ff, #ff2d55, #1b1464);
-        box-shadow: 0 10px 26px rgba(255, 45, 85, 0.35);
+        width: 104px; height: 104px; border-radius: 50%; margin: 0 auto; position: relative;
+        background: conic-gradient(from 0deg, #ff3d6e, #ffb02e, #8a3ffc, #ff3d6e, #ffb02e, #8a3ffc, #ff3d6e);
+        box-shadow: 0 0 40px rgba(255, 176, 46, 0.35);
         animation: spin 9s linear infinite;
     }
+    .disc::before {
+        content: ""; position: absolute; inset: 0; border-radius: 50%;
+        background: repeating-radial-gradient(circle at center, rgba(0,0,0,0) 0 4px, rgba(0,0,0,0.18) 4px 5px);
+    }
     .disc::after {
-        content: ""; position: absolute; top: 38%; left: 38%; width: 24%; height: 24%;
-        border-radius: 50%; background: #ffffff; box-shadow: inset 0 0 0 3px #dbe8ff;
+        content: ""; position: absolute; top: 37%; left: 37%; width: 26%; height: 26%;
+        border-radius: 50%; background: #0e0e14; box-shadow: 0 0 0 4px #ffb02e;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
 
     .rtitle { font-size: 1.9rem; font-weight: 800; color: #ffffff; }
-    .rsum { color: #ffffff; font-size: 1rem; margin: 4px 0 6px 0; line-height: 1.45; }
+    .rsum { color: #e6e1f7; font-size: 1rem; margin: 4px 0 8px 0; line-height: 1.45; }
     .chip {
-        display: inline-block; background: rgba(255,255,255,0.25); color: #ffffff;
-        border: 1px solid rgba(255,255,255,0.6); border-radius: 999px;
+        display: inline-block; background: rgba(255,176,46,0.12); color: #ffb02e;
+        border: 1px solid #ffb02e; border-radius: 999px;
         padding: 2px 12px; margin: 0 6px 6px 0; font-size: 0.9rem; font-weight: 700;
     }
+    .chip, .stApp .chip { color: #ffb02e; }
 
     /* 작은 보조 버튼 */
     .stButton > button {
         font-size: 1rem; font-weight: 700; padding: 0.45rem 0.9rem; min-height: 0;
-        border-radius: 999px; border: 2px solid #ffffff !important;
-        background: #ffffff !important; color: #0a6cff !important;
+        border-radius: 999px; border: 2px solid #ffb02e !important;
+        background: #1a1a24 !important; color: #ffb02e !important;
     }
-    .stButton > button p { color: inherit !important; font-size: 1rem; }
+    .stButton > button p { color: #ffb02e !important; font-size: 1rem; }
+    .stButton > button:hover { background: #2a2a38 !important; }
     /* 큰 주 버튼 (추천받기) */
     button[data-testid="stBaseButton-primary"], .stButton > button[kind="primary"] {
-        background: #0b2a6f !important; color: #ffffff !important; border: 2px solid #0b2a6f !important;
+        background: #ffb02e !important; color: #111111 !important; border: 2px solid #ffb02e !important;
         font-size: 1.25rem; padding: 0.9rem 1rem;
     }
-    button[data-testid="stBaseButton-primary"] p { font-size: 1.25rem; }
-    .stTextArea textarea { font-size: 1.15rem !important; background: #ffffff !important; color: #111111 !important; }
-    *:focus { outline: 4px solid #ffd54a !important; outline-offset: 2px; }
+    button[data-testid="stBaseButton-primary"] p { color: #111111 !important; font-size: 1.25rem; }
+    button[data-testid="stBaseButton-primary"]:hover { background: #ffc35c !important; }
+
+    .stTextArea textarea {
+        font-size: 1.15rem !important; background: #1a1a24 !important; color: #ffffff !important;
+        border: 2px solid #ffb02e !important; border-radius: 14px !important;
+    }
+    .stTextArea textarea::placeholder { color: #9a96b0 !important; }
+    *:focus { outline: 4px solid #ffffff !important; outline-offset: 2px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -542,23 +560,24 @@ html,body{margin:0;padding:0;background:transparent;color:#fff;
 .wrap{display:flex;gap:12px;height:446px;padding:2px}
 .left{flex:1;min-width:0;display:flex;flex-direction:column}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.hint{font-size:14px;font-weight:700;line-height:1.35}
+.hint{font-size:14px;font-weight:700;line-height:1.35;color:#e6e1f7}
 .nav{display:flex;gap:6px;flex-shrink:0}
-.pill{border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:14px;
+.pill{border:2px solid #ffb02e;background:#1a1a24;color:#ffb02e;font-weight:800;font-size:14px;
   padding:7px 12px;border-radius:999px;cursor:pointer;font-family:inherit}
-.pill:hover{background:#eaf3ff}
+.pill:hover{background:#2a2a38}
 .rail{flex:1;min-height:0;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
   position:relative;padding:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .rail::-webkit-scrollbar{display:none}
-.card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#fff;border-radius:22px;
-  padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#111;
-  box-shadow:0 14px 30px rgba(0,40,120,.28);transition:transform .15s}
-.card:hover{transform:translateY(-4px)}
-.card:focus{outline:4px solid #ffd54a;outline-offset:2px}
+.card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#1b1b26;border-radius:22px;
+  border:1px solid rgba(255,255,255,.1);
+  padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#fff;
+  box-shadow:0 14px 30px rgba(0,0,0,.5);transition:transform .15s,border-color .15s}
+.card:hover{transform:translateY(-4px);border-color:#ffb02e}
+.card:focus{outline:4px solid #fff;outline-offset:2px}
 .art{position:relative;height:130px;border-radius:16px;overflow:hidden;flex-shrink:0;
   background:linear-gradient(135deg,var(--c1),var(--c2))}
 .num{position:absolute;left:12px;top:6px;font-size:42px;font-weight:900;line-height:1;
-  color:rgba(255,255,255,.95);text-shadow:0 2px 8px rgba(0,0,0,.25)}
+  color:rgba(255,255,255,.95);text-shadow:0 2px 8px rgba(0,0,0,.35)}
 .vinyl{position:absolute;right:-34px;bottom:-34px;width:128px;height:128px;border-radius:50%;
   background:
    conic-gradient(rgba(255,255,255,0) 0 20%,rgba(255,255,255,.2) 25%,rgba(255,255,255,0) 30% 70%,rgba(255,255,255,.2) 75%,rgba(255,255,255,0) 80%),
@@ -567,28 +586,28 @@ html,body{margin:0;padding:0;background:transparent;color:#fff;
 .vinyl::after{content:"";position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;
   border-radius:50%;background:var(--c3);box-shadow:0 0 0 5px rgba(255,255,255,.35)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.title{margin-top:10px;font-size:18px;font-weight:800;line-height:1.3;word-break:keep-all;
+.title{margin-top:10px;font-size:18px;font-weight:800;line-height:1.3;word-break:keep-all;color:#fff;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.artist{margin-top:2px;font-size:15px;font-weight:700;color:#0a6cff}
-.reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#555;
+.artist{margin-top:2px;font-size:15px;font-weight:700;color:#ffb02e}
+.reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#cfcbe0;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.go{margin-top:auto;background:#ff2d2d;color:#fff;font-weight:800;font-size:15px;
+.go{margin-top:auto;background:#ffb02e;color:#111;font-weight:800;font-size:15px;
   text-align:center;padding:8px 6px;border-radius:16px;line-height:1.3}
-.go small{display:block;font-size:12px;font-weight:700;opacity:.95}
-.card:hover .go{background:#d60000}
-.panel{width:128px;flex-shrink:0;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.55);
+.go small{display:block;font-size:12px;font-weight:700}
+.card:hover .go{background:#ffc35c}
+.panel{width:128px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);
   border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:9px}
-.ptitle{font-size:16px;font-weight:800;text-align:center;line-height:1.3}
-.pbtn{width:100%;border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:15px;
+.ptitle{font-size:16px;font-weight:800;text-align:center;line-height:1.3;color:#fff}
+.pbtn{width:100%;border:2px solid #ffb02e;background:#ffb02e;color:#111;font-weight:800;font-size:15px;
   line-height:1.3;padding:12px 6px;border-radius:14px;cursor:pointer;font-family:inherit}
-.pbtn.stop{background:transparent;color:#fff}
-.pbtn:hover{filter:brightness(.95)}
-.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px}
+.pbtn.stop{background:transparent;color:#ffb02e}
+.pbtn:hover{filter:brightness(1.08)}
+.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px;color:#e6e1f7}
 .speed{display:flex;flex-direction:column;gap:6px}
-.sp{width:100%;border:2px solid #fff;background:transparent;color:#fff;font-weight:700;font-size:14px;
+.sp{width:100%;border:2px solid rgba(255,255,255,.55);background:transparent;color:#fff;font-weight:700;font-size:14px;
   padding:7px 4px;border-radius:999px;cursor:pointer;font-family:inherit}
-.sp.on{background:#0b2a6f;border-color:#0b2a6f}
-button:focus{outline:4px solid #ffd54a;outline-offset:2px}
+.sp.on{background:#ffb02e;border-color:#ffb02e;color:#111}
+button:focus{outline:4px solid #fff;outline-offset:2px}
 @media (max-width:480px){.nav{display:none}.panel{width:112px;padding:12px 8px}}
 @media (prefers-reduced-motion:reduce){.vinyl{animation:none}.card{transition:none}}
 </style></head>
@@ -668,9 +687,9 @@ def cards_html(songs: list) -> str:
     out = []
     for i, s in enumerate(songs, 1):
         h = int(hashlib.md5((s["title"] + s["artist"]).encode("utf-8")).hexdigest()[:6], 16) % 360
-        c1 = f"hsl({h},85%,58%)"
-        c2 = f"hsl({(h + 55) % 360},85%,42%)"
-        c3 = f"hsl({(h + 180) % 360},90%,72%)"
+        c1 = f"hsl({h},80%,55%)"
+        c2 = f"hsl({(h + 55) % 360},80%,34%)"
+        c3 = f"hsl({(h + 180) % 360},90%,70%)"
         if s.get("yt"):
             go_main, go_sub = "유튜브에서 듣기", "가수 공식 음원"
             note = "가수 공식 음원 영상으로 연결됩니다."
