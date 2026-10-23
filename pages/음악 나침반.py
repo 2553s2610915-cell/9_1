@@ -1,4 +1,5 @@
 import hashlib
+import html as htmllib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
+COUNT = 5  # 한 번에 추천하는 곡 수
 
 st.set_page_config(page_title="음악 나침반", page_icon="🧭", layout="centered")
 
@@ -18,14 +20,58 @@ st.markdown(
     """
     <style>
     html, body, [class*="css"] { font-size: 20px; }
-    .stApp { background-color: #0b1020; color: #f5f5f5; }
-    h1, h2, h3, h4, p, label, span, div { color: #f5f5f5; }
-    .stButton > button, .stLinkButton > a {
-        font-size: 1.2rem; font-weight: 700; padding: 0.9rem 1rem;
-        border-radius: 14px; border: 3px solid #ffd54a;
+    .stApp {
+        background: linear-gradient(120deg, #0a84ff 0%, #3aa0ff 55%, #6db8ff 100%);
+        overflow-x: hidden;
     }
-    .stButton > button[kind="primary"] { background: #ffd54a; color: #111; }
-    textarea { font-size: 1.15rem !important; }
+    .stApp p, .stApp label, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
+    .stApp [data-testid="stAlert"] p, .stApp [data-testid="stAlert"] span { color: #111111; }
+
+    .hero { text-align: center; margin: 10px 0 18px 0; }
+    .hero .brand { font-size: 2.2rem; font-weight: 800; color: #ffffff; letter-spacing: 1px; margin-top: 14px; }
+    .hero .sub { color: #eaf4ff; font-size: 1.05rem; margin-top: 6px; }
+
+    .disc {
+        width: 190px; height: 190px; border-radius: 50%; margin: 0 auto; position: relative;
+        background: conic-gradient(from 0deg, #1b1464, #ff2d55, #6a11cb, #00c6ff, #ff2d55, #1b1464);
+        box-shadow: 0 14px 34px rgba(255, 45, 85, 0.35);
+        animation: spin 9s linear infinite;
+    }
+    .disc::after {
+        content: ""; position: absolute; top: 38%; left: 38%; width: 24%; height: 24%;
+        border-radius: 50%; background: #ffffff; box-shadow: inset 0 0 0 3px #dbe8ff;
+    }
+    .hero .disc { width: 130px; height: 130px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
+
+    .stage { position: relative; max-width: 420px; margin: 10px auto 18px auto; }
+    .stage::before, .stage::after {
+        content: ""; position: absolute; top: 70px; width: 150px; height: 210px; z-index: 0;
+        background: rgba(255, 255, 255, 0.35); border-radius: 18px;
+    }
+    .stage::before { left: -95px; transform: rotate(-18deg); }
+    .stage::after { right: -95px; transform: rotate(18deg); }
+    .card {
+        position: relative; z-index: 1; background: #ffffff; border-radius: 22px;
+        padding: 28px 22px 24px 22px; text-align: center;
+        box-shadow: 0 18px 40px rgba(0, 40, 120, 0.25);
+    }
+    .card .count { color: #6b7a99; font-size: 0.95rem; margin-top: 18px; }
+    .card .song { color: #111111; font-size: 1.6rem; font-weight: 800; margin-top: 6px; word-break: keep-all; }
+    .card .artist { color: #0a6cff; font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
+    .card .reason { color: #444444; font-size: 1rem; margin-top: 12px; line-height: 1.5; }
+
+    .stButton > button, .stLinkButton > a, [data-testid^="stBaseLinkButton"] {
+        font-size: 1.15rem; font-weight: 700; padding: 0.85rem 1rem; border-radius: 999px;
+        border: 2px solid #ffffff !important; background: #ffffff !important; color: #0a6cff !important;
+    }
+    .stButton > button p, .stLinkButton > a p { color: inherit !important; }
+    .stButton > button[kind="primary"], button[data-testid="stBaseButton-primary"] {
+        background: #0b2a6f !important; color: #ffffff !important; border: 2px solid #0b2a6f !important;
+    }
+    .stButton > button:disabled { opacity: 0.5; }
+    .stTextArea textarea { font-size: 1.15rem !important; background: #ffffff !important; color: #111111 !important; }
     *:focus { outline: 4px solid #ffd54a !important; outline-offset: 2px; }
     </style>
     """,
@@ -34,15 +80,20 @@ st.markdown(
 
 defaults = {
     "user_text": "",
+    "query": "",
     "last_audio": "",
     "result": None,
     "history": [],
     "pending": "",
     "error": "",
+    "page": "home",
+    "idx": 0,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+# 화면이 바뀌어도 입력한 내용이 사라지지 않게 유지
+st.session_state.user_text = st.session_state.user_text
 
 
 # ---------- Gemini ----------
@@ -119,8 +170,7 @@ def parse_json(text: str) -> dict:
         raise ValueError("AI 응답을 해석하지 못했습니다.")
 
 
-def ask_model(user_text: str, ask_count: int, region: str, exclude: list) -> dict:
-    """AI에게 '후보' 곡을 받는다. (이후 음원 스토어에서 실제 존재 여부를 확인함)"""
+def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
     from google.genai import types
 
     exclude_text = ", ".join(exclude[-50:]) if exclude else "없음"
@@ -131,24 +181,31 @@ def ask_model(user_text: str, ask_count: int, region: str, exclude: list) -> dic
 [사용자 입력]
 {user_text}
 
+[가수 규칙: 매우 중요]
+- 사용자가 특정 가수(또는 그룹) 이름을 말했다면, 오직 그 가수의 곡만 추천하세요.
+- 비슷한 가수, 연관된 가수, 같은 소속사나 같은 장르의 다른 가수는 절대 넣지 마세요.
+- "~같은", "~스타일", "~목소리"라고 말했어도 그 가수 본인의 곡만 추천하세요.
+- 가수를 여러 명 말했다면 말한 가수들의 곡만 추천하세요.
+- requested_artists에는 사용자가 직접 말한 가수 이름을 한글 표기와 영문 표기 모두 적으세요.
+- 가수를 말하지 않았다면 requested_artists는 빈 목록으로 두고, 분위기와 장르에 맞는 여러 가수의 곡을 추천하세요.
+
 [조건]
 - 후보 곡 수: {ask_count}곡
-- 지역: {region}
 - 이미 나온 곡(중복 금지): {exclude_text}
-- 멜론, 지니, 애플뮤직 같은 음원 사이트에 실제로 발매되어 등록된 곡만 고르세요.
+- 멜론, 지니, 유튜브 같은 음원 사이트에 실제로 발매된 곡만 고르세요.
 - 반드시 잘 알려진 곡만 고르세요. 제목이나 가수가 조금이라도 불확실하면 넣지 마세요.
 - 곡을 지어내지 마세요. 가수와 곡 제목의 조합이 실제와 정확히 일치해야 합니다.
 - title과 artist는 음원 사이트에 표기된 공식 이름 그대로 쓰세요.
-- artist_alt에는 같은 가수의 다른 언어 표기(한글이면 영문, 영문이면 한글)를, title_alt에는 곡 제목의 다른 언어 표기를 쓰세요. 없으면 빈 문자열.
+- artist_alt에는 같은 가수의 다른 언어 표기, title_alt에는 곡 제목의 다른 언어 표기를 쓰세요. 없으면 빈 문자열.
 - 설명은 귀로 듣기 편하도록 짧고 쉬운 한국어 문장으로 쓰세요. 이모지, 특수기호, 마크다운은 쓰지 마세요.
 
 [출력 형식: 아래 JSON만 출력]
 {{
+  "requested_artists": [],
   "analysis": {{
     "summary": "취향을 한두 문장으로 요약",
     "mood": ["분위기 키워드"],
     "genre": ["장르 키워드"],
-    "artists": ["언급되었거나 비슷한 가수"],
     "situation": "어울리는 상황이나 감정"
   }},
   "songs": [
@@ -158,9 +215,13 @@ def ask_model(user_text: str, ask_count: int, region: str, exclude: list) -> dic
 """
     resp = generate(
         prompt,
-        types.GenerateContentConfig(response_mime_type="application/json", temperature=0.6),
+        types.GenerateContentConfig(response_mime_type="application/json", temperature=0.4),
     )
     data = parse_json(resp.text)
+
+    requested = data.get("requested_artists")
+    requested = [str(x).strip() for x in requested if x] if isinstance(requested, list) else []
+
     songs = data.get("songs")
     if not isinstance(songs, list):
         songs = []
@@ -177,10 +238,10 @@ def ask_model(user_text: str, ask_count: int, region: str, exclude: list) -> dic
     analysis = data.get("analysis")
     if not isinstance(analysis, dict):
         analysis = {}
-    return {"analysis": analysis, "songs": clean}
+    return {"analysis": analysis, "requested": requested, "songs": clean}
 
 
-# ---------- 음원 스토어(Apple Music / iTunes) 실존 확인 ----------
+# ---------- 음원 스토어 실존 확인 (화면에는 표시하지 않음) ----------
 def norm(s: str) -> str:
     s = (s or "").lower()
     s = re.sub(r"\(.*?\)|\[.*?\]", "", s)
@@ -199,15 +260,14 @@ def similar(a: str, b: str) -> bool:
     return SequenceMatcher(None, a, b).ratio() >= 0.85
 
 
-def artist_ok(cand_names: list, store_artist: str) -> bool:
+def artist_ok(names: list, store_artist: str) -> bool:
     store_n = norm(store_artist)
-    for n in cand_names:
+    for n in names:
         if not n:
             continue
         if similar(n, store_artist):
             return True
         nn = norm(n)
-        # 'A feat. B' 처럼 여러 가수가 적힌 경우
         if len(nn) >= 2 and nn in store_n:
             return True
     return False
@@ -228,7 +288,6 @@ def itunes_search(term: str, country: str) -> list:
 
 
 def verify_song(c: dict):
-    """반환: ("ok", song) / ("nomatch", None) / ("error", None)"""
     term = f"{c['artist']} {c['title']}"
     titles = [c["title"], c.get("title_alt", "")]
     artists = [c["artist"], c.get("artist_alt", "")]
@@ -251,9 +310,6 @@ def verify_song(c: dict):
                     "id": r.get("trackId"),
                     "title": name,
                     "artist": art,
-                    "album": r.get("collectionName", ""),
-                    "preview": r.get("previewUrl", ""),
-                    "link": r.get("trackViewUrl", ""),
                     "reason": c.get("reason", ""),
                 }
     if had_error and not had_success:
@@ -268,8 +324,9 @@ def safe_verify(c: dict):
         return "error", None
 
 
-def recommend(user_text: str, count: int, region: str, exclude: list) -> dict:
+def recommend(user_text: str, count: int, exclude: list) -> dict:
     analysis = None
+    requested = []
     verified = []
     seen_ids = set()
     seen_titles = set(norm(x) for x in exclude)
@@ -277,13 +334,15 @@ def recommend(user_text: str, count: int, region: str, exclude: list) -> dict:
     checked = 0
     errors = 0
 
-    for _ in range(2):  # 모자라면 한 번 더 요청
+    for _ in range(2):
         need = count - len(verified)
         if need <= 0:
             break
-        data = ask_model(user_text, min(need + 4, 14), region, tried)
+        data = ask_model(user_text, min(need + 5, 15), tried)
         if analysis is None:
             analysis = data["analysis"]
+        if data["requested"]:
+            requested = data["requested"]
         cands = data["songs"]
         if not cands:
             continue
@@ -297,6 +356,9 @@ def recommend(user_text: str, count: int, region: str, exclude: list) -> dict:
                 errors += 1
             if status != "ok":
                 continue
+            # 가수를 지정했다면 그 가수의 곡만 통과
+            if requested and not artist_ok(requested, song["artist"]):
+                continue
             key = song["id"] or norm(song["title"] + song["artist"])
             tnorm = norm(song["title"])
             if key in seen_ids or tnorm in seen_titles:
@@ -307,8 +369,8 @@ def recommend(user_text: str, count: int, region: str, exclude: list) -> dict:
 
     if not verified:
         if checked and errors == checked:
-            raise RuntimeError("음원 사이트 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
-        raise ValueError("음원 사이트에서 확인된 곡을 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
+            raise RuntimeError("곡 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+        raise ValueError("확인된 곡을 더 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
 
     return {"analysis": analysis or {}, "songs": verified[:count]}
 
@@ -320,32 +382,35 @@ def join_list(v) -> str:
     return str(v) if v else ""
 
 
+def youtube_url(song: dict) -> str:
+    return "https://www.youtube.com/results?search_query=" + quote(f"{song['artist']} {song['title']}")
+
+
 def build_speech_lines(result: dict) -> list:
     a = result.get("analysis", {})
     lines = ["음악 나침반의 추천 결과입니다."]
     if a.get("summary"):
         lines.append("취향 분석. " + str(a["summary"]))
-    if join_list(a.get("mood")):
-        lines.append("분위기는 " + join_list(a["mood"]) + " 입니다.")
-    if join_list(a.get("genre")):
-        lines.append("장르는 " + join_list(a["genre"]) + " 입니다.")
     for i, s in enumerate(result["songs"], 1):
-        lines.append(f"{i}번. {s['artist']}의 {s['title']}. {s['reason']}")
+        line = f"{i}번. {s['artist']}의 {s['title']}."
+        if s["reason"]:
+            line += " " + s["reason"]
+        lines.append(line)
     lines.append("추천 안내를 마칩니다.")
     return lines
 
 
 def speak_component(lines: list, rate: float):
     safe = json.dumps(lines, ensure_ascii=False).replace("</", "<\\/")
-    html = f"""
+    page_html = f"""
     <div style="display:flex; gap:12px; flex-wrap:wrap; font-family:sans-serif;">
       <button id="play" aria-label="추천 결과 소리로 듣기"
-        style="font-size:22px; font-weight:700; padding:16px 22px; border-radius:14px;
-               border:3px solid #ffd54a; background:#ffd54a; color:#111; cursor:pointer;">
+        style="font-size:20px; font-weight:700; padding:14px 22px; border-radius:999px;
+               border:2px solid #fff; background:#fff; color:#0a6cff; cursor:pointer;">
         🔊 결과 소리로 듣기</button>
       <button id="stop" aria-label="읽기 멈추기"
-        style="font-size:22px; font-weight:700; padding:16px 22px; border-radius:14px;
-               border:3px solid #ffd54a; background:#0b1020; color:#ffd54a; cursor:pointer;">
+        style="font-size:20px; font-weight:700; padding:14px 22px; border-radius:999px;
+               border:2px solid #fff; background:transparent; color:#fff; cursor:pointer;">
         ⏹ 멈추기</button>
     </div>
     <script>
@@ -367,45 +432,87 @@ def speak_component(lines: list, rate: float):
       }};
     </script>
     """
-    components.html(html, height=110)
+    components.html(page_html, height=100)
 
 
+def card_html(i: int, total: int, s: dict) -> str:
+    return (
+        '<div class="stage"><div class="card">'
+        '<div class="disc" aria-hidden="true"></div>'
+        f'<div class="count">{i + 1} / {total}</div>'
+        f'<div class="song">{htmllib.escape(s["title"])}</div>'
+        f'<div class="artist">{htmllib.escape(s["artist"])}</div>'
+        f'<div class="reason">{htmllib.escape(s["reason"])}</div>'
+        '</div></div>'
+    )
+
+
+# ---------- 콜백 ----------
 def set_pending(kind: str):
     st.session_state.pending = kind
 
 
-def clear_all():
-    st.session_state.user_text = ""
-    st.session_state.result = None
-    st.session_state.history = []
+def go_prev():
+    st.session_state.idx = max(0, st.session_state.idx - 1)
+
+
+def go_next():
+    total = len(st.session_state.result["songs"]) if st.session_state.result else 0
+    st.session_state.idx = min(max(total - 1, 0), st.session_state.idx + 1)
+
+
+def go_home():
+    st.session_state.page = "home"
     st.session_state.error = ""
 
 
-# ---------- 화면 ----------
-st.title("🧭 음악 나침반")
-st.write("듣고 싶은 노래의 분위기, 장르, 가수를 말하거나 글로 알려 주세요. "
-         "취향을 분석해서, 음원 사이트에 실제로 있는 노래만 추천해 드립니다.")
+# ---------- 추천 실행 ----------
+pending = st.session_state.pending
+if pending:
+    st.session_state.pending = ""
+    try:
+        more = pending == "more" and bool(st.session_state.result)
+        text = st.session_state.query if more else st.session_state.user_text.strip()
+        if not text:
+            raise ValueError("먼저 마이크로 말하거나 내용을 입력해 주세요.")
+        with st.spinner("취향을 분석하고 노래를 찾는 중입니다. 잠시만 기다려 주세요."):
+            res = recommend(text, COUNT, st.session_state.history if more else [])
+        if more:
+            start = len(st.session_state.result["songs"])
+            st.session_state.result["songs"] += res["songs"]
+            st.session_state.idx = start
+        else:
+            st.session_state.query = text
+            st.session_state.result = res
+            st.session_state.history = []
+            st.session_state.idx = 0
+        st.session_state.history += [s["title"] for s in res["songs"]]
+        st.session_state.page = "result"
+        st.session_state.error = ""
+    except Exception as e:
+        st.session_state.error = friendly_error(e) if not isinstance(e, ValueError) else str(e)
 
-if not get_api_key():
-    st.warning("GEMINI_API_KEY가 설정되지 않았습니다. 배포 설정의 Secrets에 키를 등록해 주세요.")
 
-mode = st.radio(
-    "어떻게 알려 주시겠어요?",
-    ["🎤 말로 하기", "⌨️ 글로 쓰기"],
-    horizontal=True,
-)
+# ---------- 첫 화면 ----------
+def render_home():
+    st.markdown(
+        '<div class="hero"><div class="disc" aria-hidden="true"></div>'
+        '<h1 class="brand">음악 나침반</h1>'
+        '<div class="sub">듣고 싶은 노래를 말하거나 써 주세요</div></div>',
+        unsafe_allow_html=True,
+    )
 
-if mode == "🎤 말로 하기":
-    st.write("마이크 버튼을 눌러 말씀하시고, 끝나면 정지 버튼을 눌러 주세요. "
-             "예: 비 오는 날 혼자 듣기 좋은 잔잔한 발라드, 아이유 같은 목소리.")
+    if not get_api_key():
+        st.warning("GEMINI_API_KEY가 설정되지 않았습니다. 배포 설정의 Secrets에 키를 등록해 주세요.")
+    if st.session_state.error:
+        st.error(st.session_state.error)
+
     audio = None
     if hasattr(st, "audio_input"):
         try:
-            audio = st.audio_input("마이크로 말하기")
+            audio = st.audio_input("🎤 마이크 (눌러서 말하고, 끝나면 다시 눌러 주세요)")
         except Exception:
             audio = None
-    else:
-        st.info("이 환경에서는 음성 입력을 쓸 수 없습니다. '글로 쓰기'를 선택해 주세요.")
 
     if audio is not None:
         try:
@@ -418,63 +525,52 @@ if mode == "🎤 말로 하기":
                 if text:
                     old = st.session_state.user_text.strip()
                     st.session_state.user_text = (old + " " + text).strip() if old else text
-                    st.success("말씀하신 내용을 글로 바꿨습니다. 아래에서 확인해 주세요.")
+                    st.success("말씀하신 내용이 아래 내용창에 써졌습니다. 고칠 수 있어요.")
                 else:
                     st.warning("말소리를 알아듣지 못했습니다. 다시 말씀해 주세요.")
         except Exception as e:
             st.error(friendly_error(e))
-    label = "말씀하신 내용 (틀린 부분은 고칠 수 있습니다)"
-else:
-    label = "원하는 분위기, 장르, 가수, 지금의 기분을 자유롭게 적어 주세요."
 
-st.text_area(
-    label,
-    key="user_text",
-    height=150,
-    placeholder="예: 운전하면서 신나게 들을 수 있는 90년대 한국 댄스곡",
-)
+    st.text_area(
+        "📝 내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다)",
+        key="user_text",
+        height=150,
+        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래 / 아이유 노래",
+    )
 
-col1, col2 = st.columns(2)
-with col1:
-    count = st.slider("추천받을 곡 수", 3, 10, 5)
-with col2:
-    region = st.selectbox("노래 범위", ["국내외 섞어서", "한국 노래 위주", "해외 노래 위주"])
+    st.button("🧭 추천받기", type="primary", use_container_width=True,
+              on_click=set_pending, args=("new",))
 
-st.button("🧭 추천받기", type="primary", use_container_width=True,
-          on_click=set_pending, args=("new",))
-st.button("🗑 모두 지우기", on_click=clear_all, use_container_width=True)
 
-# ---------- 추천 실행 ----------
-pending = st.session_state.pending
-if pending:
-    st.session_state.pending = ""
-    text = st.session_state.user_text.strip()
-    if not text:
-        st.session_state.error = "먼저 말씀하시거나 글로 취향을 입력해 주세요."
-    else:
-        try:
-            more = pending == "more"
-            with st.spinner("취향을 분석하고, 음원 사이트에서 실제 있는 곡인지 확인하는 중입니다. "
-                            "잠시만 기다려 주세요."):
-                exclude = st.session_state.history if more else []
-                res = recommend(text, count, region, exclude)
-            st.session_state.result = res
-            if not more:
-                st.session_state.history = []
-            st.session_state.history += [s["title"] for s in res["songs"]]
-            st.session_state.error = ""
-        except Exception as e:
-            st.session_state.error = friendly_error(e)
+# ---------- 추천 곡 화면 ----------
+def render_result():
+    result = st.session_state.result
+    if not result or not result.get("songs"):
+        st.session_state.page = "home"
+        st.rerun()
+        return
 
-if st.session_state.error:
-    st.error(st.session_state.error)
+    songs = result["songs"]
+    total = len(songs)
+    idx = min(max(st.session_state.idx, 0), total - 1)
+    st.session_state.idx = idx
+    s = songs[idx]
 
-# ---------- 결과 ----------
-result = st.session_state.result
-if result:
-    st.header("추천 결과")
+    st.markdown('<div class="hero"><h1 class="brand">추천 노래</h1></div>', unsafe_allow_html=True)
+    if st.session_state.error:
+        st.error(st.session_state.error)
+
+    st.markdown(card_html(idx, total, s), unsafe_allow_html=True)
+
+    st.link_button("▶ 유튜브에서 듣기", youtube_url(s), use_container_width=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.button("◀ 이전 곡", on_click=go_prev, disabled=(idx == 0), use_container_width=True)
+    with c2:
+        st.button("다음 곡 ▶", on_click=go_next, disabled=(idx >= total - 1), use_container_width=True)
+
     a = result.get("analysis", {})
-
     st.subheader("내 취향 분석")
     if a.get("summary"):
         st.write(str(a["summary"]))
@@ -482,33 +578,13 @@ if result:
         st.write("분위기: " + join_list(a["mood"]))
     if join_list(a.get("genre")):
         st.write("장르: " + join_list(a["genre"]))
-    if join_list(a.get("artists")):
-        st.write("관련 가수: " + join_list(a["artists"]))
     if a.get("situation"):
         st.write("어울리는 상황: " + str(a["situation"]))
 
-    st.subheader("추천 노래")
-    if len(result["songs"]) < count:
-        st.info(f"음원 사이트에서 확인된 {len(result['songs'])}곡만 보여 드립니다. "
-                "'다른 곡 더 추천받기'를 누르면 더 찾아 드립니다.")
-    for i, s in enumerate(result["songs"], 1):
-        st.markdown(f"#### {i}번. {s['title']} - {s['artist']}")
-        if s.get("album"):
-            st.write("앨범: " + s["album"])
-        if s["reason"]:
-            st.write(s["reason"])
-        if s.get("preview"):
-            try:
-                st.audio(s["preview"])
-            except Exception:
-                pass
-        q = quote(f"{s['artist']} {s['title']}")
-        st.link_button(
-            f"{i}번 곡 유튜브에서 전곡 듣기",
-            f"https://www.youtube.com/results?search_query={q}",
-        )
-        if s.get("link"):
-            st.link_button(f"{i}번 곡 Apple Music에서 보기", s["link"])
+    st.subheader("전체 곡 목록")
+    for i, song in enumerate(songs, 1):
+        st.write(f"{i}번. {song['title']} - {song['artist']}")
+        st.link_button(f"{i}번 곡 유튜브에서 듣기", youtube_url(song), key=f"yt_{i}")
 
     st.subheader("소리로 듣기")
     speed = st.select_slider("읽는 속도", options=["느리게", "보통", "빠르게"], value="보통")
@@ -520,5 +596,10 @@ if result:
 
     st.button("🔄 다른 곡 더 추천받기", use_container_width=True,
               on_click=set_pending, args=("more",))
+    st.button("✏️ 다시 입력하기", use_container_width=True, on_click=go_home)
 
-    st.caption("곡 제목과 가수는 Apple Music 음원 목록에서 확인된 정보입니다.")
+
+if st.session_state.page == "result":
+    render_result()
+else:
+    render_home()
