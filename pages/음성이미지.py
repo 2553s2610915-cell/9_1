@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="소리눈 | 실시간 장애물 감지",
@@ -79,14 +78,12 @@ st.markdown(
 
 st.markdown("### 실시간 카메라")
 
-app_html = r"""
-<!DOCTYPE html>
+app_html = """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- TensorFlow.js 및 COCO-SSD 스크립트 -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 
@@ -148,7 +145,9 @@ video, canvas {
   height: auto;
   display: block;
 }
-/* 후면/전면 상관없이 캔버스와 영상을 동기화하기 위해 scaleX(-1) 제거 */
+video {
+  transform: scaleX(-1);
+}
 canvas {
   position: absolute;
   left: 0;
@@ -180,7 +179,7 @@ canvas {
 </div>
 
 <div id="status" role="status" aria-live="polite">
-  준비 중입니다. 감지 시작 버튼을 누르세요.
+  준비 완료. '감지 시작' 버튼을 누르세요.
 </div>
 
 <div id="videoWrap">
@@ -198,9 +197,7 @@ canvas {
 </p>
 
 <script>
-(() => {
-  "use strict";
-
+window.addEventListener("DOMContentLoaded", () => {
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
@@ -246,9 +243,7 @@ canvas {
     if (!voiceEnabled || !("speechSynthesis" in window)) return;
 
     const now = Date.now();
-    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) {
-      return;
-    }
+    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) return;
     if (!force && now - lastSpokenAt < 3500) return;
 
     try {
@@ -299,12 +294,10 @@ canvas {
   async function loadModel() {
     if (model) return model;
 
-    setStatus("AI 모델을 불러오는 중입니다. 잠시만 기다려주세요...");
+    setStatus("AI 모델을 불러오는 중입니다...");
 
     if (!window.tf || !window.cocoSsd) {
-      throw new Error(
-        "AI 모델 스크립트를 불러오지 못했습니다. 네트워크 상태를 확인하세요."
-      );
+      throw new Error("TensorFlow.js 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
     }
 
     await window.tf.ready();
@@ -368,9 +361,7 @@ canvas {
         ctx.lineWidth = Math.max(3, width / 200);
         ctx.strokeRect(x, y, w, h);
 
-        const caption =
-          (labels[item.prediction.class] || item.prediction.class) +
-          " " + Math.round(item.prediction.score * 100) + "%";
+        const caption = (labels[item.prediction.class] || item.prediction.class) + " " + Math.round(item.prediction.score * 100) + "%";
 
         ctx.font = `bold ${Math.max(16, width / 35)}px Arial`;
         const textWidth = ctx.measureText(caption).width;
@@ -386,24 +377,13 @@ canvas {
         return;
       }
 
-      const summary = descriptions
-        .slice(0, 6)
-        .map(item =>
-          `${item.direction} ${item.name} (${Math.round(item.prediction.score * 100)}%)`
-        );
-
+      const summary = descriptions.slice(0, 6).map(item => `${item.direction} ${item.name} (${Math.round(item.prediction.score * 100)}%)`);
       logEl.textContent = "감지 결과: " + summary.join(" · ");
 
-      const warnings = descriptions.filter(item =>
-        item.centrallyLocated && item.visuallyLarge
-      );
-
+      const warnings = descriptions.filter(item => item.centrallyLocated && item.visuallyLarge);
       if (warnings.length > 0) {
         const warning = warnings[0];
-        const message =
-          `${warning.direction}에 ${warning.name}이(가) 크게 보입니다. ` +
-          "충돌 위험이 있을 수 있습니다. 멈추고 주변을 확인하세요.";
-
+        const message = `${warning.direction}에 ${warning.name}이(가) 크게 보입니다. 충돌 주의하세요.`;
         setStatus("주의: 전방 물체가 크게 감지되었습니다.");
         speak(message);
       } else {
@@ -421,13 +401,11 @@ canvas {
     if (running) return;
 
     startBtn.disabled = true;
-    setStatus("카메라와 AI 모델을 준비하고 있습니다...");
+    setStatus("카메라 권한 확인 및 AI 모델 로딩 중...");
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error(
-          "브라우저에서 카메라 권한을 열 수 없거나 HTTPS 연결이 아닙니다."
-        );
+        throw new Error("브라우저에서 카메라 접근을 지원하지 않습니다. HTTPS 접속 환경인지 확인하세요.");
       }
 
       if ("speechSynthesis" in window) {
@@ -455,18 +433,15 @@ canvas {
 
       startBtn.disabled = true;
       stopBtn.disabled = false;
-      setStatus("감지 중입니다.");
+      setStatus("감지 실행 중입니다.");
       logEl.textContent = "AI 모델이 준비되었습니다.";
 
       speak("소리눈 감지를 시작합니다.", true);
       detectLoop(myGeneration);
     } catch (error) {
       stopCamera();
-      setStatus("시작할 수 없습니다.");
-      logEl.textContent =
-        (error.name ? error.name + ": " : "") +
-        (error.message || String(error)) +
-        " (카메라 권한 및 HTTPS 실행 여부를 확인하세요)";
+      setStatus("카메라 및 감지 시작 실패");
+      logEl.textContent = "오류 상세: " + (error.name ? error.name + " - " : "") + error.message;
       startBtn.disabled = false;
     }
   });
@@ -475,9 +450,7 @@ canvas {
 
   voiceBtn.addEventListener("click", () => {
     voiceEnabled = !voiceEnabled;
-    voiceBtn.textContent = voiceEnabled
-      ? "음성 안내: 켜짐"
-      : "음성 안내: 꺼짐";
+    voiceBtn.textContent = voiceEnabled ? "음성 안내: 켜짐" : "음성 안내: 꺼짐";
     voiceBtn.setAttribute("aria-pressed", String(voiceEnabled));
 
     if (!voiceEnabled && "speechSynthesis" in window) {
@@ -488,16 +461,21 @@ canvas {
   });
 
   window.addEventListener("pagehide", stopCamera);
-
-  if (!("speechSynthesis" in window)) {
-    voiceBtn.disabled = true;
-    voiceBtn.textContent = "음성 미지원 브라우저";
-  }
-})();
+});
 </script>
 </body>
-</html>
-"""
+</html>"""
 
-# Streamlit iframe에 카메라 권한(camera) 부여 설정
-components.html(app_html, height=800, scrolling=True)
+st.components.v1.html(app_html, height=800, scrolling=True)
+
+st.markdown("---")
+st.markdown("### 이용 시 확인 사항")
+st.markdown(
+    """
+    - 카메라 권한을 허용해야 합니다.
+    - 처음 실행할 때 AI 모델 다운로드로 시작이 늦어질 수 있습니다.
+    - 브라우저와 운영체제에 따라 한국어 음성 지원 여부가 다를 수 있습니다.
+    - 이 앱은 영상 속 물체를 분류합니다. 계단, 낭떠러지, 투명 유리, 낮은 장애물 등을 모두 감지하지는 못합니다.
+    - 화면이 꺼지거나 앱이 백그라운드로 이동하면 분석이 중단될 수 있습니다.
+    """
+)
