@@ -276,4 +276,90 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     if (stream) {
-      stream.getTracks().forEach(track =>
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    video.srcObject = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    setStatus("감지가 정지되었습니다.");
+    logEl.textContent = "카메라가 종료되었습니다.";
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  async function loadModel() {
+    if (model) return model;
+
+    setStatus("AI 모델을 불러오는 중입니다...");
+
+    if (!window.tf || !window.cocoSsd) {
+      throw new Error("TensorFlow.js 라이브러리를 불러오지 못했습니다. 인터넷 연결 상태를 확인하세요.");
+    }
+
+    await window.tf.ready();
+    model = await window.cocoSsd.load();
+    return model;
+  }
+
+  function getDescription(prediction) {
+    const name = labels[prediction.class] || prediction.class;
+    const [x, y, width, height] = prediction.bbox;
+    const videoWidth = video.videoWidth || 1;
+    const videoHeight = video.videoHeight || 1;
+
+    const centerX = (x + width / 2) / videoWidth;
+    const areaRatio = (width * height) / (videoWidth * videoHeight);
+
+    let direction = "전방";
+    if (centerX < 0.35) direction = "왼쪽 전방";
+    else if (centerX > 0.65) direction = "오른쪽 전방";
+
+    const visuallyLarge = areaRatio > 0.16;
+    const centrallyLocated = centerX >= 0.25 && centerX <= 0.75;
+
+    return { name, direction, visuallyLarge, centrallyLocated };
+  }
+
+  async function detectLoop(myGeneration) {
+    if (!running || myGeneration !== generation) return;
+    animationId = requestAnimationFrame(() => detectLoop(myGeneration));
+
+    if (busy || !model || video.readyState < 2) return;
+    if (Date.now() - lastDetectionAt < 250) return;
+
+    busy = true;
+    lastDetectionAt = Date.now();
+
+    try {
+      const predictions = await model.detect(video);
+      if (!running || myGeneration !== generation) return;
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      if (!width || !height) return;
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      ctx.clearRect(0, 0, width, height);
+
+      const relevant = predictions.filter(p => p.score >= 0.55);
+      const descriptions = relevant.map(p => ({
+        prediction: p,
+        ...getDescription(p)
+      }));
+
+      for (const item of descriptions) {
+        const [x, y, w, h] = item.prediction.bbox;
+        ctx.strokeStyle = item.visuallyLarge ? "#ff5252" : "#42d6a4";
+        ctx.lineWidth = Math.max(3, width / 200);
+        ctx.strokeRect(x, y, w, h);
+
+        const caption = (labels[item.prediction.class] || item.prediction.class) + " " + Math.round(item.prediction.
