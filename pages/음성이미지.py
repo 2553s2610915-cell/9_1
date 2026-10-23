@@ -81,7 +81,7 @@ def get_gemini_client(api_key_value):
     return genai.Client(api_key=api_key_value)
 
 # 4. 헤더 영역
-st.markdown("<h1 class='main-title'>👁️ SafeVision 보조공학 서비스</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>👁️ 음성 이미지</h1>", unsafe_allow_html=True)
 st.caption("시각장애인을 위한 전방 실시간 장애물 감지 및 음성 안내 앱")
 
 # Secrets 파싱 예외 처리
