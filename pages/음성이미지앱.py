@@ -10,7 +10,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Custom CSS (고대비 및 가독성 최적화)
+# 2. Custom CSS
 st.markdown("""
     <style>
     .main-title {
@@ -52,12 +52,12 @@ st.sidebar.title("⚙️ 감지 및 알림 설정")
 min_confidence = st.sidebar.slider("장애물 감지 민감도", 0.1, 0.9, 0.4, 0.05)
 danger_threshold = st.sidebar.slider("위험 판단 영역 비율 (%)", 10, 60, 25, 5)
 
-# 4. 브라우저 내장 Web Speech API 기반 음성 출력 함수
+# 4. 브라우저 내장 Web Speech API 기반 음성 출력 함수 (SyntaxError 방지 처리 완료)
 def speak_text(text):
     if text:
         js_code = f"""
         <script>
-            var msg = new SpeechSynthesisUtterance('{text}');
+            var msg = new SpeechSynthesisUtterance("{text}");
             msg.lang = 'ko-KR';
             msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
@@ -65,32 +65,27 @@ def speak_text(text):
         """
         st.components.v1.html(js_code, height=0)
 
-# 5. 영상 처리 클래스 (VideoProcessorBase 사용으로 최신 streamlit-webrtc 규격 반영)
+# 5. 영상 처리 클래스
 class ObstacleDetector(VideoProcessorBase):
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         height, width, _ = img.shape
 
-        # 명암 처리 및 에지(윤곽) 추출
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         edges = cv2.Canny(blur, 50, 150)
 
-        # 윤곽선(Contour) 기반 장애물 영역 식별
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         detected_obstacles = []
         
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            # 설정한 민감도 대비 일정 크기 이상의 장애물만 탐지
             if area > (width * height * (min_confidence * 0.015)):
                 x, y, w, h = cv2.boundingRect(cnt)
                 
-                # 화면 대비 장애물 점유 비율 (%)
                 bbox_area_ratio = (w * h) / (width * height) * 100
                 
-                # 위치 구획 (좌 / 전방 중앙 / 우)
                 center_x = x + w / 2
                 if center_x < width / 3:
                     position = "좌측"
@@ -99,7 +94,6 @@ class ObstacleDetector(VideoProcessorBase):
                 else:
                     position = "전방 중앙"
 
-                # 위험도 판단 (화면 점유율 기준)
                 is_danger = bbox_area_ratio >= danger_threshold
 
                 color = (0, 0, 255) if is_danger else (0, 255, 0)
@@ -112,7 +106,6 @@ class ObstacleDetector(VideoProcessorBase):
                 if is_danger:
                     detected_obstacles.append((position, bbox_area_ratio))
 
-        # 가장 크고 가까운 위험 장애물 상태 기록
         if detected_obstacles:
             detected_obstacles.sort(key=lambda item: item[1], reverse=True)
             top_obstacle = detected_obstacles[0]
@@ -128,4 +121,43 @@ class ObstacleDetector(VideoProcessorBase):
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    st.subheader("📹 실시간 웹
+    st.subheader("📹 실시간 웹캠 화면 분석")
+    rtc_config = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
+    
+    webrtc_ctx = webrtc_streamer(
+        key="obstacle-detection",
+        mode=WebRtcMode.SENDRECV,
+        rtc_configuration=rtc_config,
+        video_processor_factory=ObstacleDetector,
+        media_stream_constraints={"video": True, "audio": False},
+    )
+
+with col2:
+    st.subheader("📢 알림 및 상태 안내")
+    
+    status_container = st.empty()
+    
+    if 'warning_msg' in st.session_state:
+        msg = st.session_state['warning_msg']
+        if "⚠️" in msg:
+            html_content = f'<div class="warning-box">{msg}</div>'
+            status_container.markdown(html_content, unsafe_allow_html=True)
+            
+            speech = st.session_state.get('speech_text', '')
+            if speech:
+                speak_text(speech)
+        else:
+            html_content = f'<div class="safe-box">{msg}</div>'
+            status_container.markdown(html_content, unsafe_allow_html=True)
+    else:
+        status_container.info("카메라 [START] 버튼을 누르면 장애물 감지가 시작됩니다.")
+
+    st.markdown("---")
+    st.markdown("### 💡 사용 가이드")
+    st.markdown("""
+    1. **웹캠 실행**: 비디오 화면의 **[START]** 버튼을 클릭하고 브라우저의 카메라 권한을 허용해 주세요.
+    2. **음성 출력**: 스마트폰이나 PC의 스피커 볼륨이 켜져 있는지 확인해 주세요.
+    3. **민감도 조절**: 사물 인식 반응 속도나 감도를 조절하고 싶을 경우, 좌측 사이드바의 슬라이더를 조정하세요.
+    """)
