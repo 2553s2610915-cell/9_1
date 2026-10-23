@@ -1,170 +1,70 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from PIL import Image
-import io
-import json
 
-# 1. 페이지 기본 설정 (모바일 및 대형 UI 최적화)
-st.set_page_config(
-    page_title="SafeVision - 시각장애인 보조 AI",
-    page_icon="👁️",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="시각장애인 음성 보행 도우미", page_icon="🦯")
 
-# 커스텀 CSS (고대비 및 시각장애인/저시력자용 대형 글씨 스타일)
+# 커스텀 고대비 UI 스타일ing
 st.markdown("""
-    <style>
-    .main-title {
-        font-size: 2.2rem;
-        font-weight: 800;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .status-card {
-        padding: 20px;
-        border-radius: 12px;
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    .danger-box {
-        background-color: #ffebe9;
-        border: 3px solid #ff4d4f;
-        color: #cf1322;
-    }
-    .warning-box {
-        background-color: #fffbe6;
-        border: 3px solid #ffe58f;
-        color: #d46b08;
-    }
-    .safe-box {
-        background-color: #f6ffed;
-        border: 3px solid #b7eb8f;
-        color: #389e0d;
-    }
-    .alert-text {
-        font-size: 1.8rem;
-        font-weight: bold;
-        line-height: 1.4;
-    }
-    .stButton button {
-        width: 100%;
-        height: 3rem;
-        font-size: 1.2rem !important;
-        font-weight: bold !important;
-    }
-    .permission-card {
-        background-color: #f0f2f5;
-        border-left: 5px solid #1890ff;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-    }
-    </style>
+<style>
+    .title { font-size: 2.2rem; font-weight: bold; color: #FFFF00; background: #000; padding: 15px; text-align: center; border-radius: 8px; }
+    .btn-big button { font-size: 1.5rem !important; height: 3em !important; font-weight: bold !important; }
+</style>
 """, unsafe_allow_html=True)
 
-# 2. 음성 재생 JS 함수
-def speak_text(text):
-    """브라우저의 Web Speech API(TTS)를 사용하여 한국어 음성을 출력하는 HTML/JS 렌더링"""
-    clean_text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
-    js_code = f"""
+def play_speech(text):
+    clean = text.replace("'", "").replace('"', '').replace('\n', ' ')
+    js = f"""
     <script>
         if ('speechSynthesis' in window) {{
             window.speechSynthesis.cancel();
-            var msg = new SpeechSynthesisUtterance('{clean_text}');
+            var msg = new SpeechSynthesisUtterance('{clean}');
             msg.lang = 'ko-KR';
-            msg.rate = 1.1;
-            msg.pitch = 1.0;
+            msg.rate = 1.0;
             window.speechSynthesis.speak(msg);
         }}
     </script>
     """
-    st.components.v1.html(js_code, height=0, width=0)
+    st.components.v1.html(js, height=0)
 
-# 3. 카메라 권한 확인 및 요청 컴포넌트 함수
-def render_camera_permission_check():
-    """브라우저의 카메라 접근 권한 상태를 확인하고 허용을 유도하는 HTML/JS 컴포넌트"""
-    permission_html = """
-    <div style="background-color: #e6f7ff; border: 2px solid #91d5ff; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-        <h4 style="margin:0 0 8px 0; color: #0050b3;">📷 카메라 접근 권한 확인</h4>
-        <p id="perm-status" style="margin: 0 0 10px 0; font-size: 14px; color: #262626;">권한 상태를 확인하고 있습니다...</p>
-        <button id="perm-btn" onclick="requestCameraPermission()" style="padding: 8px 16px; font-size: 14px; font-weight: bold; background-color: #1890ff; color: white; border: none; border-radius: 6px; cursor: pointer;">
-            카메라 권한 요청 / 확인
-        </button>
-    </div>
+st.markdown("<div class='title'>🦯 시각장애인 보행 위험 음성 안내 시스템</div>", unsafe_allow_html=True)
 
-    <script>
-    function updateStatus(message, isSuccess) {
-        var statusEl = document.getElementById('perm-status');
-        if (statusEl) {
-            statusEl.innerText = message;
-            statusEl.style.color = isSuccess ? '#389e0d' : '#cf1322';
-            statusEl.style.fontWeight = 'bold';
-        }
-    }
+# API 키 확인
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+else:
+    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다.")
+    st.stop()
 
-    async function checkPermission() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            updateStatus('이 브라우저는 카메라 접근을 지원하지 않거나 HTTPS 보안 연결이 아닙니다.', false);
-            return;
-        }
+# 입력 방식 선택 (카메라 외의 다양한 대안 제공)
+mode = st.radio(
+    "👉 분석 방식을 선택하세요:",
+    ["1. 상황 음성/텍스트 질문", "2. 파일 업로드 분석", "3. 보행 위험 샘플 테스트"],
+    horizontal=False
+)
 
-        try {
-            if (navigator.permissions && navigator.permissions.query) {
-                const result = await navigator.permissions.query({ name: 'camera' });
-                if (result.state === 'granted') {
-                    updateStatus('✅ 카메라 권한이 허용되었습니다. 아래 카메라 창을 이용하세요.', true);
-                } else if (result.state === 'prompt') {
-                    updateStatus('⚠️ 카메라 권한 승인이 필요합니다. 아래 버튼을 눌러 허용해 주세요.', false);
-                } else if (result.state === 'denied') {
-                    updateStatus('❌ 카메라 권한이 차단되어 있습니다. 브라우저 주소창 왼쪽의 자물쇠/설정 아이콘을 눌러 권한을 허용으로 변경해 주세요.', false);
-                }
-            }
-        } catch (e) {
-            console.log("Permission Query API 미지원:", e);
-        }
-    }
+st.divider()
 
-    async function requestCameraPermission() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            updateStatus('✅ 카메라 접근이 승인되었습니다!', true);
-            // 권한 획득 후 스트림 즉시 해제 (Streamlit camera_input이 사용할 수 있도록)
-            stream.getTracks().forEach(track => track.stop());
-        } catch (err) {
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                updateStatus('❌ 카메라 접근이 거부되었습니다. 주소창 자물쇠 아이콘에서 카메라 권한을 [허용]으로 바꿔주세요.', false);
-            } else {
-                updateStatus('카메라 접근 오류: ' + err.message, false);
-            }
-        }
-    }
+selected_image = None
+text_prompt_input = ""
 
-    // 페이지 로드시 자동 권한 상태 체크
-    checkPermission();
-    </script>
-    """
-    st.components.v1.html(permission_html, height=135)
+if mode == "1. 상황 음성/텍스트 질문":
+    st.info("💡 마이크 음성 입력 기능 또는 현재 상황/위치를 입력하면 보행 안전 수칙을 음성으로 알려줍니다.")
+    text_prompt_input = st.text_input("질문 또는 현재 상황을 입력하세요 (예: 전방에 점자블록이 끊기고 공사 소리가 납니다)", "전방에 공사 표지판과 볼라드가 보입니다. 어떻게 이동해야 하나요?")
 
-# 4. Gemini Client 초기화 함수
-@st.cache_resource
-def get_gemini_client(api_key_value):
-    return genai.Client(api_key=api_key_value)
+elif mode == "2. 파일 업로드 분석":
+    uploaded = st.file_uploader("전방 촬영 이미지를 업로드하세요", type=["jpg", "png", "jpeg"])
+    if uploaded:
+        selected_image = Image.open(uploaded)
+        st.image(selected_image, caption="업로드된 이미지", use_container_width=True)
 
-# 5. 헤더 영역
-st.markdown("<h1 class='main-title'>👁️ 음성 이미지</h1>", unsafe_allow_html=True)
-st.caption("시각장애인을 위한 전방 실시간 장애물 감지 및 음성 안내 앱")
-
-# Secrets 파싱 예외 처리
-try:
-    api_key = st.secrets.get("GEMINI_API_KEY", None)
-except Exception:
-    api_key = Noneㅂㅁ
-
-if not api_key:
-    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다.")ㅂ
-
-    반드시 다음 구조의 JSON 형식으로만 응답하세요:
-    {
-      "risk_level": "DANGER",
+elif mode == "3. 보행 위험 샘플 테스트":
+    st.info("💡 보행 중 자주 만나는 위험 요소 샘플을 선택하세요.")
+    sample = st.selectbox("보행 위험 상황 선택:", [
+        "전방 2미터 앞 자전거 방치",
+        "보도블록 파손 및 계단 단차",
+        "인도 위 전동 킥보드 장애물",
+        "신호등 없는 횡단보도 전방"
+    ])
+    text_prompt_input = f"시각장애인 보행
