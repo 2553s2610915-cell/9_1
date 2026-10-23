@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai import types
 
 # 페이지 설정
 st.set_page_config(
@@ -96,11 +97,14 @@ if audio_file is not None:
                 "예: '주의! 앞에 계단이 있을 수 있으니 지팡이로 확인하며 천천히 이동하세요.'"
             )
             
-            # Gemini 2.5 Flash Lite 모델 호출 (오디오 데이터 전달)
+            # Gemini 모델 호출 (오디오 데이터 전달) - types.Part.from_bytes 사용
             response = client.models.generate_content(
                 model='gemini-2.5-flash-lite',
                 contents=[
-                    {"mime_type": "audio/wav", "data": audio_bytes},
+                    types.Part.from_bytes(
+                        data=audio_bytes,
+                        mime_type="audio/wav",
+                    ),
                     prompt
                 ]
             )
