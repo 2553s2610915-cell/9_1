@@ -57,59 +57,60 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 2. 음성 재생 JS 함수 생성
+# 2. 음성 재생 JS 함수 (문자열 이스케이프 이중 처리로 SyntaxError 예방)
 def speak_text(text):
-    """브라우저의 Web Speech API(TTS)를 사용하여 한국어 음성을 출력하는 HTML/JS 레더링"""
-    # 따옴표 및 줄바꿈 예외 처리
-    safe_text = text.replace("'", "").replace('"', '').replace('\n', ' ')
+    """브라우저의 Web Speech API(TTS)를 사용하여 한국어 음성을 출력하는 HTML/JS 렌더링"""
+    clean_text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
     js_code = f"""
-        <script>
-            if ('speechSynthesis' in window) {{
-                window.speechSynthesis.cancel(); // 이전 음성 취소
-                var msg = new SpeechSynthesisUtterance('{safe_text}');
-                msg.lang = 'ko-KR';
-                msg.rate = 1.1; // 읽기 속도
-                msg.pitch = 1.0;
-                window.speechSynthesis.speak(msg);
-            }}
-        </script>
+    <script>
+        if ('speechSynthesis' in window) {{
+            window.speechSynthesis.cancel();
+            var msg = new SpeechSynthesisUtterance('{clean_text}');
+            msg.lang = 'ko-KR';
+            msg.rate = 1.1;
+            msg.pitch = 1.0;
+            window.speechSynthesis.speak(msg);
+        }}
+    </script>
     """
     st.components.v1.html(js_code, height=0, width=0)
 
 # 3. Gemini Client 초기화 함수
 @st.cache_resource
-def get_gemini_client(api_key):
-    return genai.Client(api_key=api_key)
+def get_gemini_client(api_key_value):
+    return genai.Client(api_key=api_key_value)
 
 # 4. 헤더 영역
 st.markdown("<h1 class='main-title'>👁️ SafeVision 보조공학 서비스</h1>", unsafe_allow_html=True)
 st.caption("시각장애인을 위한 전방 실시간 장애물 감지 및 음성 안내 앱")
 
-# API 키 확인 및 예외 처리
-api_key = st.secrets.get("GEMINI_API_KEY")
+# Secrets 파싱 예외 처리
+try:
+    api_key = st.secrets.get("GEMINI_API_KEY", None)
+except Exception:
+    api_key = None
 
 if not api_key:
-    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다. Secrets 설정을 확인해주세요.")
-    st.info("Streamlit Community Cloud의 [App settings] -> [Secrets]에 GEMINI_API_KEY를 등록하세요.")
+    st.error("⚠️ GEMINI_API_KEY가 설정되지 않았습니다.")
+    st.info("Streamlit Cloud의 [App settings] -> [Secrets] 메뉴에서 GEMINI_API_KEY = \"your_api_key\" 를 입력해주세요.")
     st.stop()
 
 try:
     client = get_gemini_client(api_key)
 except Exception as e:
-    st.error(f"API 클라이언트 초기화 중 오류가 발생했습니다: {e}")
+    st.error(f"API 클라이언트 초기화 오류: {e}")
     st.stop()
 
-# 5. 설정 및 안내 모드
+# 5. 안내 문구
 with st.expander("ℹ️ 사용 방법 및 음성 설정", expanded=False):
     st.write("""
-    1. 아래 **'카메라로 전방 촬영하기'** 버튼을 누르거나 촬영을 수행합니다.
-    2. AI가 이미지를 즉시 분석하여 장애물, 위험도, 위치를 파악합니다.
-    3. 충돌 위험 요소가 감지되면 **음성(TTS)**으로 즉각 알려줍니다.
-    4. 음성이 들리지 않을 경우 스마트폰/PC의 미디어 음량이 켜져 있는지 확인하세요.
+    1. 아래 **'전방 향해 카메라 찍기'** 버튼으로 사진을 촬영합니다.
+    2. AI가 이미지를 분석하여 위험도와 위치를 파악합니다.
+    3. 장애물이 감지되면 **음성(TTS)**으로 즉각 알려줍니다.
     """)
 
 st.subheader("📷 전방 화면 촬영")
-camera_image = st.camera_input("전방을 향해 카메라를 찍어주세요", label_visibility="visible")
+camera_image = st.camera_input("전방을 촬영하세요", label_visibility="visible")
 
 # 분석 수행 함수
 def analyze_image(image_bytes):
@@ -119,16 +120,16 @@ def analyze_image(image_bytes):
 
     반드시 다음 구조의 JSON 형식으로만 응답하세요:
     {
-      "risk_level": "DANGER" | "WARNING" | "SAFE",
-      "voice_message": "시각장애인에게 한국어로 짧고 명확하게 음성으로 읽어줄 경고 문장 (예: '전방 중앙 1미터 앞에 계단이 있습니다. 주의하세요.')",
-      "summary": "화면 요약 한 줄 설명",
-      "detected_objects": ["감지된 장애물1", "감지된 장애물2"]
+      "risk_level": "DANGER",
+      "voice_message": "전방 중앙 1미터 앞에 계단이 있습니다. 주의하세요.",
+      "summary": "전방 계단 감지됨",
+      "detected_objects": ["계단", "기둥"]
     }
 
-    위험도 기준:
-    - DANGER: 바로 앞(1~2m 이내)에 충돌/낙상 위험이 높은 장애물(계단, 벽, 차, 사람, 낮은 턱 등)이 있음.
-    - WARNING: 진행 방향 주변에 장애물이 있으나 약간의 주의가 필요함.
-    - SAFE: 전방 보행에 특별한 장애물이 없고 안전함.
+    위험도 기준(risk_level):
+    - DANGER: 바로 앞(1~2m 이내)에 충돌/낙상 위험 요소가 있음.
+    - WARNING: 진행 방향 주변에 장애물이 있어 주의가 필요함.
+    - SAFE: 전방 보행에 장애물이 없고 안전함.
     """
 
     try:
@@ -143,21 +144,19 @@ def analyze_image(image_bytes):
             )
         )
         
-        # JSON 결과 파싱
-        result = json.loads(response.text)
-        return result
+        return json.loads(response.text)
     except json.JSONDecodeError:
         return {
             "risk_level": "WARNING",
-            "voice_message": "전방 분석 결과를 처리하는 중 형식이 맞지 않습니다. 다시 시도해 주세요.",
-            "summary": "파싱 오류 발생",
+            "voice_message": "분석 결과를 처리하는 중 형식이 맞지 않습니다. 다시 시도해 주세요.",
+            "summary": "응답 형식 오류",
             "detected_objects": []
         }
     except Exception as e:
         return {
             "risk_level": "WARNING",
-            "voice_message": f"오류가 발생했습니다: {str(e)}",
-            "summary": "API 오류",
+            "voice_message": f"분석 중 오류가 발생했습니다: {str(e)}",
+            "summary": "API 처리 오류",
             "detected_objects": []
         }
 
@@ -173,7 +172,6 @@ if camera_image:
     summary = analysis.get("summary", "")
     detected_objects = analysis.get("detected_objects", [])
 
-    # 위험도별 UI CSS 클래스 및 아이콘 설정
     box_class = "safe-box"
     status_title = "✅ 안전"
     if risk_level == "DANGER":
@@ -183,7 +181,6 @@ if camera_image:
         box_class = "warning-box"
         status_title = "⚠️ 주의 필요"
 
-    # UI 결과 출력 (대형 고대비 카드)
     st.markdown(f"""
         <div class="status-card {box_class}">
             <h2>{status_title}</h2>
@@ -191,20 +188,17 @@ if camera_image:
         </div>
     """, unsafe_allow_html=True)
 
-    # 한국어 음성 출력 실행
+    # 음성 출력
     speak_text(voice_msg)
 
-    # 음성 다시 듣기 버튼
     if st.button("🔊 안내 음성 다시 듣기"):
         speak_text(voice_msg)
 
-    # 세부 정보
     st.markdown("### 📋 감지 상세 정보")
     col1, col2 = st.columns(2)
     with col1:
-        st.write(**"상황 요약:"**, summary)
+        st.write("**상황 요약:**", summary)
     with col2:
-        st.write(**"감지된 항목:"**, ", ".join(detected_objects) if detected_objects else "없음")
-
+        st.write("**감지된 항목:**", ", ".join(detected_objects) if detected_objects else "없음")
 else:
-    st.info("👆 위 카메라 창에서 사진 촬영/캡처를 진행하면 전방 장애물 감지 및 음성 안내가 시작됩니다.")
+    st.info("👆 위 카메라 창에서 사진을 찍으면 전방 장애물 감지 및 음성 안내가 시작됩니다.")
