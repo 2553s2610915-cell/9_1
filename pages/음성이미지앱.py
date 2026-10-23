@@ -61,7 +61,7 @@ if "GEMINI_API_KEY" not in st.secrets:
 
 # 브라우저 음성 합성(TTS) 실행 함수
 def speak_message(text):
-    safe_text = text.replace("'", "\\'").replace('"', '\\"')
+    safe_text = text.replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
     js_code = f"""
     <script>
         if ('speechSynthesis' in window) {{
@@ -84,8 +84,9 @@ if audio_file is not None:
         st.audio(audio_file)
         
         with st.spinner("🤖 AI가 음성을 분석하고 안전 지침을 생성 중입니다..."):
-            # 업로드된 오디오 바이너리 읽기
+            # 업로드된 오디오 바이너리 읽기 및 MIME type 확인
             audio_bytes = audio_file.read()
+            mime_type = getattr(audio_file, "type", "audio/wav") or "audio/wav"
             
             # Gemini 클라이언트 초기화
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -97,37 +98,11 @@ if audio_file is not None:
                 "예: '주의! 앞에 계단이 있을 수 있으니 지팡이로 확인하며 천천히 이동하세요.'"
             )
             
-            # Gemini 모델 호출 (오디오 데이터 전달) - types.Part.from_bytes 사용
+            # Gemini 모델 호출 - 최신 모델 gemini-3.5-flash-lite 적용
             response = client.models.generate_content(
-                model='gemini-2.5-flash-lite',
+                model='gemini-3.5-flash-lite',
                 contents=[
                     types.Part.from_bytes(
                         data=audio_bytes,
-                        mime_type="audio/wav",
+                        mime_type=mime_type,
                     ),
-                    prompt
-                ]
-            )
-            
-            result_text = response.text
-            
-            # 결과 출력 및 음성 안내
-            if "주의" in result_text or "위험" in result_text or "조심" in result_text:
-                st.markdown(f'<div class="warning-box">🚨 {result_text}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="safe-box">✅ {result_text}</div>', unsafe_allow_html=True)
-                
-            # 음성으로 읽어주기
-            speak_message(result_text)
-
-    except Exception as e:
-        st.error(f"오류가 발생했습니다: {e}")
-
-# 안내 사항
-with st.expander("ℹ️ 이용 안내"):
-    st.write(
-        """
-        - 카메라를 직접 맞추기 어려운 상황에서 스마트폰 마이크 버튼을 누르고 음성으로 주변을 설명하세요.
-        - AI가 음성을 인식하여 건널목 안전, 장애물 유무, 이동 방향 등을 음성으로 피드백해 줍니다.
-        """
-    )
