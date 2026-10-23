@@ -85,6 +85,7 @@ app_html = r"""
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<!-- TensorFlow.js 및 COCO-SSD 스크립트 프리로드 -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 
@@ -180,7 +181,7 @@ canvas {
 </div>
 
 <div id="status" role="status" aria-live="polite">
-  준비 완료. '감지 시작' 버튼을 누르세요.
+  준비 중입니다. 모델을 불러오는 데 시간이 걸릴 수 있습니다.
 </div>
 
 <div id="videoWrap">
@@ -198,7 +199,9 @@ canvas {
 </p>
 
 <script>
-window.addEventListener("DOMContentLoaded", () => {
+(() => {
+  "use strict";
+
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
@@ -244,7 +247,9 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!voiceEnabled || !("speechSynthesis" in window)) return;
 
     const now = Date.now();
-    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) return;
+    if (!force && message === lastSpoken && now - lastSpokenAt < 5000) {
+      return;
+    }
     if (!force && now - lastSpokenAt < 3500) return;
 
     try {
@@ -284,4 +289,228 @@ window.addEventListener("DOMContentLoaded", () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     startBtn.disabled = false;
     stopBtn.disabled = true;
-    setStatus("
+    setStatus("감지가 정지되었습니다.");
+    logEl.textContent = "카메라가 종료되었습니다.";
+
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  async function loadModel() {
+    if (model) return model;
+
+    setStatus("AI 모델을 불러오는 중입니다. 인터넷 연결을 확인하세요.");
+
+    if (!window.tf || !window.cocoSsd) {
+      throw new Error(
+        "AI 모델 스크립트를 불러오지 못했습니다. 인터넷 연결 또는 CDN 접근을 확인하세요."
+      );
+    }
+
+    await window.tf.ready();
+    model = await window.cocoSsd.load();
+    return model;
+  }
+
+  function getDescription(prediction) {
+    const name = labels[prediction.class] || prediction.class;
+    const [x, y, width, height] = prediction.bbox;
+    const videoWidth = video.videoWidth || 1;
+    const videoHeight = video.videoHeight || 1;
+
+    const centerX = (x + width / 2) / videoWidth;
+    const areaRatio = (width * height) / (videoWidth * videoHeight);
+
+    let direction = "전방";
+    if (centerX < 0.35) direction = "왼쪽 전방";
+    else if (centerX > 0.65) direction = "오른쪽 전방";
+
+    const visuallyLarge = areaRatio > 0.16;
+    const centrallyLocated = centerX >= 0.25 && centerX <= 0.75;
+
+    return { name, direction, visuallyLarge, centrallyLocated };
+  }
+
+  async function detectLoop(myGeneration) {
+    if (!running || myGeneration !== generation) return;
+    animationId = requestAnimationFrame(() => detectLoop(myGeneration));
+
+    if (busy || !model || video.readyState < 2) return;
+    if (Date.now() - lastDetectionAt < 250) return;
+
+    busy = true;
+    lastDetectionAt = Date.now();
+
+    try {
+      const predictions = await model.detect(video);
+      if (!running || myGeneration !== generation) return;
+
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      if (!width || !height) return;
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+
+      ctx.clearRect(0, 0, width, height);
+
+      const relevant = predictions.filter(p => p.score >= 0.55);
+      const descriptions = relevant.map(p => ({
+        prediction: p,
+        ...getDescription(p)
+      }));
+
+      for (const item of descriptions) {
+        const [x, y, w, h] = item.prediction.bbox;
+        ctx.strokeStyle = item.visuallyLarge ? "#ff5252" : "#42d6a4";
+        ctx.lineWidth = Math.max(3, width / 200);
+        ctx.strokeRect(x, y, w, h);
+
+        const caption =
+          (labels[item.prediction.class] || item.prediction.class) +
+          " " + Math.round(item.prediction.score * 100) + "%";
+
+        ctx.font = `bold ${Math.max(16, width / 35)}px Arial`;
+        const textWidth = ctx.measureText(caption).width;
+        ctx.fillStyle = item.visuallyLarge ? "#a51c30" : "#075d47";
+        ctx.fillRect(x, Math.max(0, y - 30), textWidth + 14, 28);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(caption, x + 7, Math.max(21, y - 10));
+      }
+
+      if (descriptions.length === 0) {
+        setStatus("뚜렷한 물체가 감지되지 않았습니다. 주변을 직접 확인하세요.");
+        logEl.textContent = "현재 감지된 물체가 없습니다.";
+        return;
+      }
+
+      const summary = descriptions
+        .slice(0, 6)
+        .map(item =>
+          `${item.direction} ${item.name} (${Math.round(item.prediction.score * 100)}%)`
+        );
+
+      logEl.textContent = "감지 결과: " + summary.join(" · ");
+
+      const warnings = descriptions.filter(item =>
+        item.centrallyLocated && item.visuallyLarge
+      );
+
+      if (warnings.length > 0) {
+        const warning = warnings[0];
+        const message =
+          `${warning.direction}에 ${warning.name}이(가) 크게 보입니다. ` +
+          "충돌 위험이 있을 수 있습니다. 멈추고 주변을 확인하세요.";
+
+        setStatus("주의: 전방 물체가 크게 감지되었습니다.");
+        speak(message);
+      } else {
+        setStatus("물체를 감지하고 있습니다. 감지 결과와 주변을 함께 확인하세요.");
+      }
+    } catch (error) {
+      setStatus("분석 중 오류가 발생했습니다.");
+      logEl.textContent = "오류: " + (error.message || String(error));
+    } finally {
+      busy = false;
+    }
+  }
+
+  startBtn.addEventListener("click", async () => {
+    if (running) return;
+
+    startBtn.disabled = true;
+    setStatus("카메라와 AI 모델을 준비하고 있습니다.");
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(
+          "이 브라우저에서 카메라 접근을 지원하지 않습니다. 최신 브라우저와 HTTPS 연결을 사용하세요."
+        );
+      }
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.getVoices();
+      }
+
+      await loadModel();
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      });
+
+      video.srcObject = stream;
+      await video.play();
+
+      running = true;
+      generation++;
+      const myGeneration = generation;
+
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      setStatus("감지 중입니다. 주변을 주의 깊게 확인하세요.");
+      logEl.textContent = "AI 모델이 준비되었습니다.";
+
+      speak("소리눈 감지를 시작합니다. 주변을 확인하세요.", true);
+      detectLoop(myGeneration);
+    } catch (error) {
+      stopCamera();
+      setStatus("시작할 수 없습니다.");
+      logEl.textContent =
+        (error.name ? error.name + ": " : "") +
+        (error.message || String(error)) +
+        " 카메라 권한, HTTPS 연결, 인터넷 연결을 확인하세요.";
+      startBtn.disabled = false;
+    }
+  });
+
+  stopBtn.addEventListener("click", stopCamera);
+
+  voiceBtn.addEventListener("click", () => {
+    voiceEnabled = !voiceEnabled;
+    voiceBtn.textContent = voiceEnabled
+      ? "음성 안내: 켜짐"
+      : "음성 안내: 꺼짐";
+    voiceBtn.setAttribute("aria-pressed", String(voiceEnabled));
+
+    if (!voiceEnabled && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    } else if (voiceEnabled) {
+      speak("음성 안내를 켰습니다.", true);
+    }
+  });
+
+  window.addEventListener("pagehide", stopCamera);
+
+  if (!("speechSynthesis" in window)) {
+    voiceBtn.disabled = true;
+    voiceBtn.textContent = "이 브라우저는 음성 합성을 지원하지 않습니다.";
+  }
+})();
+</script>
+</body>
+</html>
+"""
+
+# Streamlit 최신 컴포넌트 렌더링 방식
+st.components.v1.html(app_html, height=800, scrolling=True)
+
+st.markdown("---")
+st.markdown("### 이용 시 확인 사항")
+st.markdown(
+    """
+    - 카메라 권한을 허용해야 합니다.
+    - 처음 실행할 때 AI 모델 다운로드로 시작이 늦어질 수 있습니다.
+    - 브라우저와 운영체제에 따라 한국어 음성 지원 여부가 다를 수 있습니다.
+    - 이 앱은 영상 속 물체를 분류합니다. 계단, 낭떠러지, 투명 유리, 낮은 장애물 등을 모두 감지하지는 못합니다.
+    - 화면이 꺼지거나 앱이 백그라운드로 이동하면 분석이 중단될 수 있습니다.
+    """
+)
