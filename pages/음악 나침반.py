@@ -13,6 +13,7 @@ import streamlit.components.v1 as components
 
 MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
 COUNT = 6  # 한 번에 추천하는 곡 수
+MAX_PARTS = 4  # 쉼표/엔터로 나눠 쓸 수 있는 최대 개수
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -522,6 +523,67 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
     return {"analysis": analysis or {}, "songs": final}
 
 
+# ---------- 여러 가수 검색 (쉼표 또는 엔터로 구분) ----------
+def split_inputs(text: str) -> list:
+    parts = [p.strip() for p in re.split(r"[,，、;；\n]+", text or "")]
+    out, seen = [], set()
+    for p in parts:
+        if p and p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out[:MAX_PARTS]
+
+
+def recommend_multi(text: str, count: int, exclude: list) -> dict:
+    parts = split_inputs(text)
+    if len(parts) <= 1:
+        return recommend(text, count, exclude)  # 하나뿐이면 예전과 똑같이 동작
+
+    per = max(2, -(-count // len(parts)))  # 가수당 곡 수 (올림)
+
+    def work(p):
+        try:
+            return p, recommend(p, per, exclude), None
+        except Exception as e:
+            return p, None, e
+
+    with ThreadPoolExecutor(max_workers=len(parts)) as ex:
+        outs = list(ex.map(work, parts))
+
+    ok = [(p, r) for p, r, e in outs if r]
+    failed = [p for p, r, e in outs if not r]
+    if not ok:
+        raise next(e for p, r, e in outs if e)
+
+    # 가수별 곡을 번갈아 섞기 (A1, B1, A2, B2 ...)
+    lists = [r["songs"] for _, r in ok]
+    songs, seen = [], set()
+    for i in range(max(len(l) for l in lists)):
+        for l in lists:
+            if i < len(l):
+                s = l[i]
+                key = norm(s["title"] + s["artist"])
+                if key not in seen:
+                    seen.add(key)
+                    songs.append(s)
+
+    moods, genres = [], []
+    for _, r in ok:
+        a = r["analysis"]
+        for x in (a.get("mood") or []) if isinstance(a.get("mood"), list) else []:
+            if x and x not in moods:
+                moods.append(x)
+        for x in (a.get("genre") or []) if isinstance(a.get("genre"), list) else []:
+            if x and x not in genres:
+                genres.append(x)
+
+    summary = "입력하신 " + ", ".join(p for p, _ in ok) + "의 노래를 각각 골랐습니다."
+    if failed:
+        summary += " " + ", ".join(failed) + "은(는) 곡을 찾지 못했습니다."
+    return {"analysis": {"summary": summary, "mood": moods[:3], "genre": genres[:3]},
+            "songs": songs}
+
+
 # ---------- 표시용 ----------
 def esc(x) -> str:
     return htmllib.escape(str(x or ""), quote=True)
@@ -739,7 +801,7 @@ if pending:
         if not text:
             raise ValueError("먼저 마이크로 말하거나 내용을 입력해 주세요.")
         with st.spinner("취향을 분석하고 노래를 찾는 중입니다. 잠시만 기다려 주세요."):
-            res = recommend(text, COUNT, st.session_state.history if more else [])
+            res = recommend_multi(text, COUNT, st.session_state.history if more else [])
         if more:
             st.session_state.start = len(st.session_state.result["songs"])
             st.session_state.result["songs"] += res["songs"]
@@ -794,10 +856,11 @@ def render_home():
             st.error(friendly_error(e))
 
     st.text_area(
-        "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다)",
+        "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다. "
+        "가수를 여러 명 찾으려면 쉼표(,)나 엔터로 나눠 써 주세요)",
         key="user_text",
         height=150,
-        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래 / 아이유 노래",
+        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래\n또는: 릴러말즈, 다이나믹듀오",
     )
 
     st.button("추천받기", type="primary", use_container_width=True,
