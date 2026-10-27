@@ -3,55 +3,38 @@ import streamlit.components.v1 as components
 
 # 페이지 설정
 st.set_page_config(
-    page_title="오디오 축구 게임 (Audio Soccer)",
+    page_title="오디오 & 비주얼 축구 게임",
     page_icon="⚽",
     layout="centered"
 )
 
-# Custom CSS
+# Custom CSS 스타일링
 st.markdown("""
 <style>
     .stApp {
-        background-color: #0d1117;
+        background-color: #0e1117;
         color: #ffffff;
     }
     .big-title {
         text-align: center;
-        font-size: 2.2rem;
+        font-size: 2rem;
         font-weight: bold;
         color: #2ea44f;
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     .sub-title {
         text-align: center;
         color: #8b949e;
-        font-size: 1rem;
-        margin-bottom: 25px;
-    }
-    .info-box {
-        background-color: #161b22;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #30363d;
+        font-size: 0.95rem;
         margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="big-title">⚽ Audio Soccer (오디오 축구)</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">이어폰을 착용하고 소리만 들어 공을 받아쳐내세요!</div>', unsafe_allow_html=True)
+st.markdown('<div class="big-title">⚽ 스케치 기반 오디오 축구 게임</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">좌/우에서 날아오는 축구공의 소리와 궤적을 보고 타이밍 맞춰 터치하세요!</div>', unsafe_allow_html=True)
 
-with st.expander("📖 게임 방법 & 주의사항", expanded=True):
-    st.markdown("""
-    1. **이어폰 또는 헤드폰 필수**: 좌/우 입체 음향으로 공의 위치를 감지합니다.
-    2. **준비하기**: 화면 중앙의 **[게임 시작]** 버튼을 누릅니다.
-    3. **공 슈팅 소리**:
-       - **왼쪽 소리**: 공이 왼쪽에서 날아옴
-       - **오른쪽 소리**: 공이 오른쪽에서 날아옴
-    4. **방어 타이밍**: 소리가 가장 가까워졌을 때 **화면 전체 검은 영역** 아무 곳이나 터치/클릭하세요!
-    """)
-
-# Web Audio API 및 HTML/JS 기반 인터랙티브 게임 컴포넌트
+# HTML/JS/Canvas 게임 구현
 game_html = """
 <!DOCTYPE html>
 <html>
@@ -78,91 +61,56 @@ game_html = """
         #game-container {
             width: 100%;
             max-width: 500px;
-            height: 480px;
-            background: linear-gradient(180deg, #161b22 0%, #0d1117 100%);
-            border: 2px solid #30363d;
+            height: 520px;
+            background-color: #ffffff;
+            border: 3px solid #30363d;
             border-radius: 16px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            padding: 20px;
+            padding: 10px;
             position: relative;
-            overflow: hidden;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            color: #000;
         }
         .stats-bar {
             width: 100%;
             display: flex;
             justify-content: space-between;
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: bold;
-            background: rgba(255,255,255,0.05);
-            padding: 10px 20px;
-            border-radius: 10px;
+            background: #f0f3f6;
+            padding: 8px 15px;
+            border-radius: 8px;
+            border: 1px solid #d0d7de;
         }
-        .heart { color: #ff4d4d; }
-        .score { color: #2ea44f; }
+        .score { color: #1f883d; }
+        .heart { color: #cf222e; }
         
-        #touch-zone {
+        canvas {
             width: 100%;
-            height: 260px;
-            border: 2px dashed #484f58;
-            border-radius: 12px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            height: 380px;
+            background-color: #ffffff;
+            border-radius: 8px;
             cursor: pointer;
-            transition: background-color 0.1s;
-            text-align: center;
-        }
-        #touch-zone:active {
-            background-color: rgba(46, 164, 79, 0.2);
-            border-color: #2ea44f;
-        }
-        .touch-msg {
-            font-size: 1.3rem;
-            font-weight: bold;
-            color: #c9d1d9;
-            pointer-events: none;
-        }
-        .touch-sub {
-            font-size: 0.9rem;
-            color: #8b949e;
-            margin-top: 8px;
-            pointer-events: none;
         }
         
         #start-btn {
             width: 100%;
-            padding: 16px;
-            font-size: 1.3rem;
+            padding: 12px;
+            font-size: 1.2rem;
             font-weight: bold;
             color: #ffffff;
-            background-color: #238636;
+            background-color: #1f883d;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.4);
+            box-shadow: 0 4px 10px rgba(31, 136, 61, 0.3);
         }
         #start-btn:active {
             transform: scale(0.98);
         }
-        
-        #feedback {
-            position: absolute;
-            top: 45%;
-            font-size: 2.5rem;
-            font-weight: 900;
-            text-shadow: 0 0 10px rgba(0,0,0,0.8);
-            opacity: 0;
-            transition: opacity 0.2s, transform 0.2s;
-            pointer-events: none;
-        }
-        .perfect { color: #2ea44f; }
-        .good { color: #e3b341; }
-        .miss { color: #f85149; }
     </style>
 </head>
 <body>
@@ -173,35 +121,26 @@ game_html = """
         <div>라이프: <span id="lives-val" class="heart">❤️❤️❤️</span></div>
     </div>
 
-    <div id="touch-zone">
-        <div class="touch-msg">🎧 소리를 듣고 터치하세요!</div>
-        <div class="touch-sub">(화면 아무 곳이나 눌러도 됩니다)</div>
-    </div>
-
-    <div id="feedback">PERFECT!</div>
+    <canvas id="gameCanvas" width="480" height="380"></canvas>
 
     <button id="start-btn" onclick="startGame()">⚽ 게임 시작</button>
 </div>
 
 <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
     let audioCtx = null;
     let isPlaying = false;
     let score = 0;
     let lives = 3;
     
-    let currentBall = null; // { direction: 'left'|'right', startTime: number, duration: number, hit: boolean }
-    let gameLoopTimeout = null;
-
-    // TTS 음성 안내
-    function speak(text) {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ko-KR';
-            utterance.rate = 1.1;
-            window.speechSynthesis.speak(utterance);
-        }
-    }
+    let ball = null; // { startX, startY, endX, endY, progress, duration, side, active, hit }
+    let animationFrameId = null;
+    let lastTime = 0;
+    let feedbackText = "";
+    let feedbackColor = "";
+    let feedbackTimer = 0;
 
     function initAudio() {
         if (!audioCtx) {
@@ -212,8 +151,8 @@ game_html = """
         }
     }
 
-    // Web Audio API 기반 3D 소리 생성 함수
-    function playSoccerBallSound(direction, duration) {
+    // 소리 생성 및 입체 오디오 설정
+    function playSoccerSound(side, duration) {
         if (!audioCtx) return;
 
         const osc = audioCtx.createOscillator();
@@ -221,17 +160,14 @@ game_html = """
         const panner = audioCtx.createStereoPanner();
 
         osc.type = 'sine';
-        // 공이 날아오며 높낮이가 변하는 소리
-        osc.frequency.setValueAtTime(120, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(320, audioCtx.currentTime + duration);
+        osc.frequency.setValueAtTime(130, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(350, audioCtx.currentTime + duration);
 
-        // 오디오 패닝 설정 (-1: 완전 왼쪽, 1: 완전 오른쪽)
-        const panValue = (direction === 'left') ? -0.95 : 0.95;
-        panner.pan.setValueAtTime(panValue, audioCtx.currentTime);
+        const panVal = (side === 'left') ? -0.9 : 0.9;
+        panner.pan.setValueAtTime(panVal, audioCtx.currentTime);
 
-        // 공이 가까워질수록 소리가 커지는 효과
         gainNode.gain.setValueAtTime(0.01, audioCtx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.8, audioCtx.currentTime + duration - 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.7, audioCtx.currentTime + duration - 0.05);
         gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + duration);
 
         osc.connect(gainNode);
@@ -242,7 +178,6 @@ game_html = """
         osc.stop(audioCtx.currentTime + duration);
     }
 
-    // 성공/실패 효과음
     function playEffect(type) {
         if (!audioCtx) return;
         const osc = audioCtx.createOscillator();
@@ -252,113 +187,235 @@ game_html = """
 
         if (type === 'hit') {
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.15);
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(700, audioCtx.currentTime + 0.15);
             gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
             gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.15);
-        } else if (type === 'miss') {
+        } else {
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-            osc.frequency.linearRampToValueAtTime(60, audioCtx.currentTime + 0.3);
-            gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.frequency.linearRampToValueAtTime(60, audioCtx.currentTime + 0.25);
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
             osc.start();
-            osc.stop(audioCtx.currentTime + 0.3);
+            osc.stop(audioCtx.currentTime + 0.25);
         }
     }
 
-    function startGame() {
-        initAudio();
-        isPlaying = true;
-        score = 0;
-        lives = 3;
-        updateUI();
-
-        document.getElementById('start-btn').style.display = 'none';
-        speak("게임 시작! 소리에 집중하세요.");
-
-        setTimeout(nextBall, 2000);
+    function drawGoalNet() {
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        
+        // 골대 외각 프레임
+        ctx.strokeRect(100, 30, 280, 110);
+        
+        // 스케치 느낌의 그물망 그리기
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 115; x < 380; x += 20) {
+            ctx.moveTo(x, 30);
+            ctx.lineTo(x + 5, 140);
+        }
+        for (let y = 45; y < 140; y += 15) {
+            ctx.moveTo(100, y);
+            ctx.lineTo(380, y + 2);
+        }
+        ctx.stroke();
     }
 
-    function nextBall() {
+    function drawCharacter(x, y, isBlue, label) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        // 머리
+        ctx.beginPath();
+        ctx.arc(0, -30, 18, 0, Math.PI * 2);
+        ctx.fillStyle = isBlue ? '#d0e8ff' : '#ffffff';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        // 눈 & 미소
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-6, -34, 2, 0, Math.PI * 2);
+        ctx.arc(6, -34, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, -28, 8, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+
+        // 몸통 (직사각형)
+        ctx.fillStyle = isBlue ? '#b6d7a8' : '#ffffff';
+        ctx.fillRect(-15, -10, 30, 40);
+        ctx.strokeRect(-15, -10, 30, 40);
+
+        // 팔 (스케치 느낌)
+        ctx.beginPath();
+        ctx.moveTo(-15, -5);
+        ctx.quadraticCurveTo(-30, 5, -25, 20);
+        ctx.moveTo(15, -5);
+        ctx.quadraticCurveTo(30, 5, 25, 20);
+        ctx.stroke();
+
+        // 다리
+        ctx.beginPath();
+        ctx.moveTo(-8, 30);
+        ctx.lineTo(-12, 65);
+        ctx.moveTo(8, 30);
+        ctx.lineTo(12, 65);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+    function drawScene() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 골대 (상단)
+        drawGoalNet();
+
+        // 2. 스케치 캐릭터 2명 (왼쪽: 수비수, 오른쪽: 골키퍼)
+        drawCharacter(130, 230, true, "수비수");
+        drawCharacter(310, 230, false, "키퍼");
+
+        // 3. 공 궤적 및 축구공
+        if (ball && ball.active) {
+            // 궤적 선 (스케치 화살표 느낌)
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(ball.startX, ball.startY);
+            ctx.lineTo(ball.currentX, ball.currentY);
+            ctx.stroke();
+
+            // 축구공
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(ball.currentX, ball.currentY, 18, 0, Math.PI * 2);
+            ctx.fillStyle = '#2c1320'; // 스케치 이미지의 짙은 공 색상
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // 공 내부 무늬
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(ball.currentX - 4, ball.currentY - 4, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // 4. 피드백 텍스트 (PERFECT, GOOD, MISS)
+        if (feedbackTimer > 0) {
+            ctx.font = 'bold 28px sans-serif';
+            ctx.fillStyle = feedbackColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(feedbackText, canvas.width / 2, 190);
+            feedbackTimer--;
+        }
+    }
+
+    function spawnBall() {
         if (!isPlaying) return;
 
-        const direction = Math.random() < 0.5 ? 'left' : 'right';
-        // 점수가 높아질수록 속도가 빨라짐 (1.2초 ~ 2.0초)
-        const duration = Math.max(1.0, 2.0 - (score * 0.05));
-        
-        currentBall = {
-            direction: direction,
-            startTime: audioCtx.currentTime,
+        const side = Math.random() < 0.5 ? 'left' : 'right';
+        const duration = Math.max(0.9, 1.8 - (score * 0.04));
+
+        let startX = side === 'left' ? 140 : 320;
+        let startY = 280;
+        let endX = side === 'left' ? 360 : 120; // 골대 쪽 궤적
+        let endY = 70;
+
+        ball = {
+            startX: startX,
+            startY: startY,
+            endX: endX,
+            endY: endY,
+            currentX: startX,
+            currentY: startY,
+            progress: 0,
             duration: duration,
-            hit: false
+            side: side,
+            active: true,
+            hit: false,
+            startTime: performance.now()
         };
 
-        playSoccerBallSound(direction, duration);
+        playSoccerSound(side, duration);
+    }
 
-        // 공이 지나갈 때까지 터치 안 하면 MISS 판정
-        gameLoopTimeout = setTimeout(() => {
-            if (currentBall && !currentBall.hit && isPlaying) {
+    function gameLoop(timestamp) {
+        if (isPlaying && ball && ball.active) {
+            let elapsed = (timestamp - ball.startTime) / 1000;
+            ball.progress = elapsed / ball.duration;
+
+            if (ball.progress <= 1.0) {
+                ball.currentX = ball.startX + (ball.endX - ball.startX) * ball.progress;
+                ball.currentY = ball.startY + (ball.endY - ball.startY) * ball.progress;
+            } else if (!ball.hit) {
+                // 시간 초과 - MISS
+                ball.active = false;
                 handleMiss("놓침!");
             }
-        }, duration * 1000 + 100);
+        }
+
+        drawScene();
+
+        if (isPlaying) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
     }
 
     function handleTouch(e) {
         if (e) e.preventDefault();
-        if (!isPlaying || !currentBall || currentBall.hit) return;
+        if (!isPlaying || !ball || !ball.active || ball.hit) return;
 
-        const currentTime = audioCtx.currentTime;
-        const elapsedTime = currentTime - currentBall.startTime;
-        const timeDiff = Math.abs(elapsedTime - currentBall.duration);
+        ball.hit = true;
+        ball.active = false;
 
-        currentBall.hit = true;
-        clearTimeout(gameLoopTimeout);
+        let diff = Math.abs(1.0 - ball.progress);
 
-        // 판정 기준 (0.2초 이내 Perfect, 0.4초 이내 Good)
-        if (timeDiff <= 0.20) {
+        if (diff <= 0.18) {
             score += 100;
-            showFeedback("PERFECT! ⚽", "perfect");
+            setFeedback("PERFECT! ⚽", "#1f883d");
             playEffect('hit');
-        } else if (timeDiff <= 0.40) {
+            setTimeout(spawnBall, 1000);
+        } else if (diff <= 0.38) {
             score += 50;
-            showFeedback("GOOD! 👍", "good");
+            setFeedback("GOOD! 👍", "#d97706");
             playEffect('hit');
+            setTimeout(spawnBall, 1000);
         } else {
             handleMiss("타이밍 미스!");
-            return;
         }
 
         updateUI();
-        setTimeout(nextBall, 1200);
     }
 
     function handleMiss(reason) {
-        lives -= 1;
+        lives--;
+        setFeedback("MISS! ❌", "#cf222e");
         playEffect('miss');
-        showFeedback("MISS! ❌", "miss");
         updateUI();
 
         if (lives <= 0) {
             gameOver();
         } else {
-            setTimeout(nextBall, 1500);
+            setTimeout(spawnBall, 1200);
         }
     }
 
-    function showFeedback(text, className) {
-        const fb = document.getElementById('feedback');
-        fb.innerText = text;
-        fb.className = className;
-        fb.style.opacity = '1';
-        fb.style.transform = 'scale(1.2)';
-
-        setTimeout(() => {
-            fb.style.opacity = '0';
-            fb.style.transform = 'scale(1.0)';
-        }, 600);
+    function setFeedback(text, color) {
+        feedbackText = text;
+        feedbackColor = color;
+        feedbackTimer = 35;
     }
 
     function updateUI() {
@@ -368,22 +425,42 @@ game_html = """
         document.getElementById('lives-val').innerText = hearts || '💀';
     }
 
-    function gameOver() {
-        isPlaying = false;
-        currentBall = null;
-        document.getElementById('start-btn').style.display = 'block';
-        document.getElementById('start-btn').innerText = '🔄 다시 시작';
-        
-        speak("게임 오버. 최종 점수는 " + score + "점입니다.");
+    function startGame() {
+        initAudio();
+        isPlaying = true;
+        score = 0;
+        lives = 3;
+        ball = null;
+        updateUI();
+
+        document.getElementById('start-btn').style.display = 'none';
+
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(gameLoop);
+
+        setTimeout(spawnBall, 1000);
     }
 
-    // Touch & Click Event Listener
-    const touchZone = document.getElementById('touch-zone');
-    touchZone.addEventListener('touchstart', handleTouch, { passive: false });
-    touchZone.addEventListener('mousedown', handleTouch);
+    function gameOver() {
+        isPlaying = false;
+        document.getElementById('start-btn').style.display = 'block';
+        document.getElementById('start-btn').innerText = '🔄 다시 시작';
+    }
+
+    // 터치, 클릭 및 키보드 이벤트
+    canvas.addEventListener('touchstart', handleTouch, { passive: false });
+    canvas.addEventListener('mousedown', handleTouch);
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            handleTouch();
+        }
+    });
+
+    // 초기 화면 렌더링
+    drawScene();
 </script>
 </body>
 </html>
 """
 
-components.html(game_html, height=520)
+components.html(game_html, height=540)
