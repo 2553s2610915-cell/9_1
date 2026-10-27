@@ -19,7 +19,8 @@ MODELS = [
     "gemini-2.5-flash-lite",
     "gemini-3.5-flash",
 ]
-COUNT = 6  # 한 번에 추천하는 곡 수
+COUNT = 6           # 비슷한 느낌의 곡 수
+YT_LOOKUP_MAX = 12  # 공식 음원 영상을 찾아보는 곡 수 (나머지는 유튜브 검색 링크)
 
 st.set_page_config(page_title="음악 나침반", page_icon="🧭", layout="centered")
 
@@ -106,6 +107,166 @@ for k, v in defaults.items():
         st.session_state[k] = v
 # 화면이 바뀌어도 입력한 내용이 사라지지 않게 유지
 st.session_state.user_text = st.session_state.user_text
+
+
+# ---------- 소리로 읽어 주기 (글을 누르면 읽어 주는 기능, 기본 켜짐) ----------
+# 화면 전체에서 쓰는 읽기 기능을 페이지에 한 번만 심어 둡니다.
+PARENT_JS = r"""
+(function () {
+  if (window.__mcSpeech) return;
+  var on = true;
+  try { if (localStorage.getItem('mcSpeech') === 'off') on = false; } catch (e) {}
+  var last = '', lastT = 0;
+  function say(t) {
+    var s = window.speechSynthesis;
+    if (!s || !t) return;
+    try {
+      s.cancel();
+      var u = new SpeechSynthesisUtterance(t);
+      u.lang = 'ko-KR';
+      u.rate = 1.0;
+      s.speak(u);
+    } catch (e) {}
+  }
+  window.__mcSpeech = {
+    isOn: function () { return on; },
+    set: function (v) {
+      on = !!v;
+      try { localStorage.setItem('mcSpeech', on ? 'on' : 'off'); } catch (e) {}
+      if (!on) { try { window.speechSynthesis.cancel(); } catch (e) {} }
+    },
+    say: say,
+    speak: function (t) { if (on) say(t); }
+  };
+  function speakOnce(t) {
+    t = (t || '').replace(/\s+/g, ' ').trim();
+    if (!t) return;
+    var now = Date.now();
+    if (t === last && now - lastT < 500) return;
+    last = t; lastT = now;
+    say(t);
+  }
+  /* 글을 누르면 읽어 줍니다 (버튼과 입력칸은 제외) */
+  document.addEventListener('click', function (e) {
+    if (!on) return;
+    var t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('button, a, textarea, input, select, [role="button"], [data-testid="stAudioInput"]')) return;
+    var el = t.closest('[data-testid="stAlert"]') ||
+             t.closest('.rsum, .rtitle, .chip, .sub, .brand, h1, h2, h3, label, li, p');
+    if (!el) return;
+    speakOnce(el.innerText || el.textContent);
+  }, true);
+  /* 버튼이나 입력칸으로 이동하면 기능을 설명해 줍니다 */
+  document.addEventListener('focusin', function (e) {
+    if (!on) return;
+    var t = e.target;
+    if (!t || !t.closest || !t.matches('button, textarea, input, a')) return;
+    var txt = '';
+    if (t.closest('[data-testid="stAudioInput"]')) {
+      txt = '마이크로 말하기 버튼';
+    } else if (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') {
+      var box = t.closest('[data-testid="stTextArea"]');
+      var lab = box ? box.querySelector('label') : null;
+      txt = (lab ? lab.innerText : (t.getAttribute('aria-label') || '')) + '. 글을 쓰는 칸입니다.';
+    } else {
+      txt = (t.getAttribute('aria-label') || t.innerText || '') + ' 버튼';
+    }
+    speakOnce(txt);
+  }, true);
+})();
+"""
+
+
+def install_js() -> str:
+    code = json.dumps(PARENT_JS).replace("</", "<\\/")
+    return (
+        "try{var P=window.parent;if(!P.__mcSpeech){"
+        "var sc=P.document.createElement('script');"
+        "sc.textContent=" + code + ";"
+        "P.document.head.appendChild(sc);}}catch(e){}"
+    )
+
+
+TOGGLE_HTML = """
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:transparent;color:#fff;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+.bar{display:flex;align-items:center;justify-content:flex-end;gap:12px;height:54px}
+.lbl{text-align:right;cursor:pointer;line-height:1.25}
+.lbl b{display:block;font-size:16px;color:#fff}
+.lbl span{font-size:12.5px;color:#c9c9d1}
+.sw{position:relative;width:96px;height:44px;border-radius:999px;border:3px solid;cursor:pointer;
+  padding:0;flex-shrink:0;transition:background .2s,border-color .2s;font-family:inherit}
+.sw.on{background:linear-gradient(#2bdc62,#14b645);border-color:#0f9a38;
+  box-shadow:inset 0 3px 6px rgba(0,0,0,.25)}
+.sw.off{background:linear-gradient(#d8d8de,#ececf0);border-color:#b8b8c0;
+  box-shadow:inset 0 3px 6px rgba(0,0,0,.18)}
+.txt{position:absolute;top:50%;transform:translateY(-50%);font-weight:900;font-size:17px;letter-spacing:1px}
+.sw.on .txt{left:14px;color:#0b8a32;text-shadow:0 1px 0 rgba(255,255,255,.35)}
+.sw.off .txt{right:12px;color:#a9a9b3;text-shadow:0 1px 0 rgba(255,255,255,.8)}
+.knob{position:absolute;top:2px;width:34px;height:34px;border-radius:50%;
+  background:linear-gradient(#ffffff,#ececf0);box-shadow:0 3px 6px rgba(0,0,0,.35);transition:left .2s}
+.sw.on .knob{left:52px}
+.sw.off .knob{left:4px}
+button:focus{outline:4px solid #ffd54a;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.knob,.sw{transition:none}}
+</style></head>
+<body>
+<div class="bar">
+  <div class="lbl" id="lbl"><b>소리로 읽어 주기</b><span>글을 누르면 읽어 줘요</span></div>
+  <button class="sw on" id="sw" type="button" role="switch" aria-checked="true"
+    aria-label="소리로 읽어 주기 스위치. 누르면 켜고 끕니다."><span class="txt" id="txt">ON</span><span class="knob"></span></button>
+</div>
+<script>
+  __INSTALL__
+  var S = null;
+  try { S = window.parent.__mcSpeech || null; } catch (e) {}
+  if (!S) {
+    S = {
+      state: true,
+      isOn: function () { return this.state; },
+      set: function (v) { this.state = !!v; if (!v) { try { speechSynthesis.cancel(); } catch (e) {} } },
+      say: function (t) {
+        try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t); u.lang = 'ko-KR'; speechSynthesis.speak(u); } catch (e) {}
+      },
+      speak: function (t) { if (this.state) this.say(t); }
+    };
+  }
+  var sw = document.getElementById('sw');
+  var txt = document.getElementById('txt');
+  function render() {
+    var on = S.isOn();
+    sw.className = 'sw ' + (on ? 'on' : 'off');
+    sw.setAttribute('aria-checked', on ? 'true' : 'false');
+    txt.textContent = on ? 'ON' : 'OFF';
+  }
+  sw.onclick = function () {
+    var next = !S.isOn();
+    S.set(next);
+    render();
+    if (next) {
+      S.say('소리로 읽어 주기를 켰습니다. 글을 누르면 읽어 드립니다.');
+    } else {
+      S.say('소리로 읽어 주기를 껐습니다.');
+    }
+  };
+  document.getElementById('lbl').onclick = function () {
+    S.speak('소리로 읽어 주기. 지금은 ' + (S.isOn() ? '켜져' : '꺼져') +
+            ' 있습니다. 오른쪽 스위치로 켜고 끌 수 있습니다.');
+  };
+  render();
+</script>
+</body></html>
+"""
+
+
+def render_toggle():
+    components.html(TOGGLE_HTML.replace("__INSTALL__", install_js()), height=58, scrolling=False)
 
 
 # ---------- Gemini ----------
@@ -200,7 +361,7 @@ def str_list(v) -> list:
 
 
 def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
-    """1) 사용자가 말한 가수를 찾고, 2) 취향을 분석하고, 3) (가수가 없을 때 쓸) 후보 곡을 받습니다."""
+    """가수와 제목으로 쓴 말을 찾아내고, 취향을 분석하고, (가수가 없을 때 쓸) 비슷한 느낌의 곡을 받습니다."""
     from google.genai import types
 
     exclude_text = ", ".join(exclude[-50:]) if exclude else "없음"
@@ -216,9 +377,13 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
 - requested_display에는 사용자가 말한 가수를 한 명당 하나씩, 가장 널리 쓰는 표기로 적으세요.
 - 가수를 말하지 않았다면 두 목록을 모두 빈 목록으로 두세요.
 - 가수를 말했다면 songs는 빈 목록으로 두세요. (곡은 다른 방법으로 찾습니다.)
-- 가수를 말하지 않았을 때만 songs에 분위기와 장르에 맞는 곡을 쓰세요.
 
-[songs 규칙]
+[제목 규칙]
+- title_queries에는 사용자가 노래 제목으로 쓴 것으로 보이는 단어나 문구를, 사용자가 쓴 그대로 적으세요. 가수 이름은 넣지 마세요.
+- 분위기나 상황을 설명하는 긴 문장이면 title_queries는 빈 목록으로 두세요.
+
+[songs 규칙: 가수를 말하지 않았을 때만]
+- 사용자가 단어나 제목만 썼다면, 그 단어와 비슷한 분위기의 곡을 쓰세요. 제목이 같은 곡은 따로 찾으니 쓰지 마세요.
 - 추천 곡 수: {ask_count}곡
 - 이미 나온 곡(중복 금지): {exclude_text}
 - 가수가 직접 발표한 원곡만, 반드시 실제로 발매된 아주 유명한 곡만 쓰세요. 확실하지 않으면 쓰지 마세요.
@@ -231,6 +396,7 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
 {{
   "requested_artists": [],
   "requested_display": [],
+  "title_queries": [],
   "analysis": {{
     "summary": "취향을 한두 문장으로 요약",
     "mood": ["분위기 키워드"],
@@ -268,6 +434,7 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
         "analysis": analysis,
         "requested": str_list(data.get("requested_artists")),
         "display": str_list(data.get("requested_display")),
+        "titles": str_list(data.get("title_queries")),
         "songs": clean,
     }
 
@@ -326,7 +493,7 @@ reason은 귀로 듣기 편한 짧은 한국어 한 문장입니다. 이모지�
             "title": c["title"], "title_alt": "",
             "artist": c["artist"], "artist_alt": "",
             "reason": reason or f"{c['artist']}의 곡입니다.",
-            "yt": "", "url": "",
+            "yt": "", "url": "", "tag": "", "match": False,
         })
     return out
 
@@ -388,7 +555,7 @@ def same_artist(names: list, store: str) -> bool:
 @st.cache_data(ttl=3600, show_spinner=False)
 def itunes_get(url: str) -> list:
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(req, timeout=8) as r:
+    with urlopen(req, timeout=10) as r:
         data = json.loads(r.read().decode("utf-8"))
     res = data.get("results", [])
     return res if isinstance(res, list) else []
@@ -427,7 +594,6 @@ def artist_catalog(requested: list) -> list:
     """가수 이름으로 스토어에서 그 가수의 실제 곡 목록을 가져옵니다."""
     tracks = []
 
-    # 1) 가수를 먼저 찾고, 그 가수의 곡 목록을 가져옵니다
     found = []  # (artistId, country)
     seen_ids = set()
     for name in requested[:4]:
@@ -458,12 +624,11 @@ def artist_catalog(requested: list) -> list:
             if r.get("wrapperType") == "track" and r.get("kind") == "song":
                 tracks.append(r)
 
-    # 2) 가수를 못 찾았으면 가수 이름 검색으로 대신합니다 (같은 가수만 통과)
     if not tracks:
         for name in requested[:4]:
             for country in ("KR", "US"):
                 try:
-                    rows = itunes_search(name, country, entity="song", attribute="artistTerm", limit=50)
+                    rows = itunes_search(name, country, entity="song", attribute="artistTerm", limit=200)
                 except Exception:
                     continue
                 for r in rows:
@@ -484,7 +649,115 @@ def artist_catalog(requested: list) -> list:
             continue
         seen.add(k)
         out.append({"title": title, "artist": art})
-    return out[:60]
+    return out[:120]
+
+
+# ---------- 입력한 제목과 같은 곡 먼저 찾기 ----------
+STOP_TOKENS = {
+    "노래", "노래들", "곡", "곡들", "음악", "추천", "추천해줘", "추천해", "추천해주세요",
+    "들려줘", "틀어줘", "해줘", "주세요", "의", "좀", "같은", "느낌", "스타일",
+    "찾아줘", "알려줘", "듣고", "싶어", "싶어요", "노래좀",
+}
+
+
+def build_title_queries(user_text: str, artist_names: list, ai_titles: list) -> list:
+    """사용자가 제목으로 썼을 만한 말을 뽑습니다. (가수 이름은 빼고, 짧은 입력은 그대로 사용)"""
+    raw = (user_text or "").strip()
+    cands = []
+    if 0 < len(raw) <= 40:
+        rest = raw
+        for n in sorted([x for x in artist_names if x], key=len, reverse=True):
+            rest = re.sub(re.escape(n), " ", rest, flags=re.I)
+        tokens = [t for t in re.split(r"\s+", rest) if t and t not in STOP_TOKENS]
+        rest = " ".join(tokens).strip(" .,!?~\"'")
+        if rest:
+            cands.append(rest)
+    cands += ai_titles
+
+    out = []
+    seen = set()
+    for c in cands:
+        c = (c or "").strip()
+        k = norm(c)
+        if not k or k in seen:
+            continue
+        if any(norm(n) == k for n in artist_names if n):
+            continue  # 가수 이름 자체는 제목으로 찾지 않습니다
+        seen.add(k)
+        out.append(c)
+    return out[:3]
+
+
+def find_exact(queries: list, names: list, ai_norm: set):
+    """스토어에서 제목이 같은 곡을 개수 제한 없이 모두 찾습니다.
+    못 찾은 '가수+제목'은 missing으로 돌려줍니다."""
+    found = []
+    missing = []
+    seen_keys = set()
+    for q in queries:
+        qn = norm(q)
+        if not qn:
+            continue
+        terms = []
+        if names:
+            terms.append(f"{names[0]} {q}")
+        terms.append(q)
+        rows = []
+        for term in terms:
+            for country in ("KR", "US"):
+                try:
+                    rows += itunes_search(term, country, limit=200)
+                except Exception:
+                    continue
+
+        exact, partial = [], []
+        for r in rows:
+            if r.get("kind") != "song":
+                continue
+            title = (r.get("trackName") or "").strip()
+            art = (r.get("artistName") or "").strip()
+            if not title or not art:
+                continue
+            if is_bad_track(title, r.get("collectionName", "")):
+                continue
+            if names and not same_artist(names, art):
+                continue
+            tn = norm(title)
+            if not tn:
+                continue
+            if tn == qn:
+                exact.append((title, art, True))
+            elif len(qn) >= 2 and qn in tn:
+                partial.append((title, art, False))
+
+        # 제목이 같은 곡이 있으면 그 곡을 모두, 없으면 제목에 단어가 들어간 곡을 모두
+        picks = exact if exact else partial
+        added = 0
+        for title, art, is_exact in picks:
+            key = norm(title) + "|" + norm_artist(art)
+            if key in seen_keys:
+                continue  # 같은 가수의 같은 곡이 앨범별로 여러 번 있으면 한 번만
+            seen_keys.add(key)
+            found.append({
+                "title": title, "title_alt": "", "artist": art, "artist_alt": "",
+                "reason": (f"입력하신 {q} 와 제목이 같은 곡입니다." if is_exact
+                           else f"제목에 {q} 가 들어 있는 곡입니다."),
+                "yt": "", "url": "",
+                "tag": "제목이 같은 곡" if is_exact else "제목에 단어 포함",
+                "match": True,
+            })
+            added += 1
+
+        # 가수와 제목을 함께 썼는데 스토어에서 못 찾은 경우: 유튜브 검색으로 연결
+        if names and not added and qn in ai_norm:
+            missing.append({
+                "title": q, "title_alt": "", "artist": names[0], "artist_alt": "",
+                "reason": "음원 목록에서 찾지 못해 유튜브 검색으로 연결합니다.",
+                "yt": "",
+                "url": "https://www.youtube.com/results?search_query=" + quote(f"{names[0]} {q}"),
+                "tag": "입력한 곡 유튜브 검색", "match": False,
+            })
+    return found, missing
 
 
 def verify_song(c: dict):
@@ -510,7 +783,7 @@ def verify_song(c: dict):
                 return "ok", {
                     "title": name, "title_alt": c.get("title_alt", ""),
                     "artist": art, "artist_alt": c.get("artist_alt", ""),
-                    "reason": c.get("reason", ""), "yt": "", "url": "",
+                    "reason": c.get("reason", ""), "yt": "", "url": "", "tag": "", "match": False,
                 }
     if had_error and not had_success:
         return "error", None
@@ -640,34 +913,51 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
     analysis = data["analysis"]
     requested = data["requested"]
     display = data["display"]
-    songs = []
 
+    names = []
+    for n in requested + display:
+        if n and n not in names:
+            names.append(n)
+
+    # 1) 입력한 제목과 같은 곡을 먼저, 개수 제한 없이 모두 찾습니다 (처음 추천받을 때만)
+    first = []
+    if not exclude:
+        queries = build_title_queries(user_text, names, data["titles"])
+        if queries:
+            ai_norm = set(norm(t) for t in data["titles"])
+            exact, missing = find_exact(queries, names, ai_norm)
+            first = missing + exact
+            for s in first:
+                seen.add(norm(s["title"]))
+
+    # 2) 그다음 비슷한 느낌의 곡을 찾습니다
+    need = count
+    vibe = []
     if requested:
-        # 가수 이름이 있으면: 스토어에 실제 있는 그 가수의 곡만 사용합니다
         cands = [c for c in artist_catalog(requested) if norm(c["title"]) not in seen]
         if cands:
-            songs = pick_from_catalog(user_text, cands, count)
-        elif exclude:
-            raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
-        else:
+            vibe = pick_from_catalog(user_text, cands, need)
+        elif not first:
+            if exclude:
+                raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
             name = (display or requested)[0]
-            songs = [{
+            vibe = [{
                 "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
                 "reason": "음원 목록을 찾지 못해, 유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
                 "yt": "", "url": "https://www.youtube.com/results?search_query=" + quote(name),
+                "tag": "가수 이름으로 검색", "match": False,
             }]
     else:
-        # 가수 이름이 없으면: AI가 말한 곡 중 스토어에서 확인된 곡만 사용합니다
         tried = list(exclude)
         checked = 0
         errors = 0
         cands = data["songs"]
         for attempt in range(2):
             if attempt == 1:
-                if len(songs) >= count:
+                if len(vibe) >= need:
                     break
                 try:
-                    cands = ask_model(user_text, min(count - len(songs) + 5, 15), tried)["songs"]
+                    cands = ask_model(user_text, min(need - len(vibe) + 5, 15), tried)["songs"]
                 except Exception:
                     break
             if not cands:
@@ -685,16 +975,19 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
                 if not k or k in seen:
                     continue
                 seen.add(k)
-                songs.append(s)
-        if not songs:
+                vibe.append(s)
+        if not vibe and not first:
             if checked and errors == checked:
                 raise RuntimeError("곡 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
             raise ValueError("확인된 곡을 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
 
-    final = songs[:count]
+    final = first + vibe[:max(need, 1)] if vibe else first
+
+    # 앞쪽 곡만 공식 음원 영상을 찾습니다 (곡이 많으면 느려지기 때문)
+    head = final[:YT_LOOKUP_MAX]
     with ThreadPoolExecutor(max_workers=4) as ex:
-        urls = list(ex.map(safe_find, final))
-    for s, u in zip(final, urls):
+        urls = list(ex.map(safe_find, head))
+    for s, u in zip(head, urls):
         s["yt"] = u
 
     return {"analysis": analysis or {}, "songs": final, "artists": display[:3]}
@@ -714,20 +1007,6 @@ def youtube_url(song: dict) -> str:
     return "https://www.youtube.com/results?search_query=" + quote(q)
 
 
-def build_speech_lines(result: dict) -> list:
-    a = result.get("analysis", {})
-    lines = ["음악 나침반의 추천 결과입니다."]
-    if a.get("summary"):
-        lines.append("취향 분석. " + str(a["summary"]))
-    for i, s in enumerate(result["songs"], 1):
-        line = f"{i}번. {s['artist']}의 {s['title']}."
-        if s["reason"]:
-            line += " " + s["reason"]
-        lines.append(line)
-    lines.append("추천 안내를 마칩니다.")
-    return lines
-
-
 CAROUSEL_TEMPLATE = """
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -736,10 +1015,9 @@ CAROUSEL_TEMPLATE = """
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent;color:#fff;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
-.wrap{display:flex;gap:12px;height:466px;padding:2px}
-.left{flex:1;min-width:0;display:flex;flex-direction:column}
+.wrap{display:flex;flex-direction:column;height:466px;padding:2px}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.hint{font-size:14px;font-weight:700;line-height:1.35;color:#e6e6ec}
+.hint{font-size:14px;font-weight:700;line-height:1.35;color:#e6e6ec;cursor:pointer}
 .nav{display:flex;gap:6px;flex-shrink:0}
 .pill{border:2px solid #fff;background:transparent;color:#fff;font-weight:800;font-size:14px;
   padding:6px 12px;border-radius:999px;cursor:pointer;font-family:inherit}
@@ -748,7 +1026,7 @@ html,body{margin:0;padding:0;background:transparent;color:#fff;
   position:relative;padding:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .rail::-webkit-scrollbar{display:none}
 .card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#17171c;border-radius:22px;
-  border:1px solid #2c2c35;padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#fff;
+  border:1px solid #2c2c35;padding:12px;display:flex;flex-direction:column;color:#fff;cursor:pointer;
   box-shadow:0 14px 30px rgba(0,0,0,.65);transition:transform .15s,border-color .15s}
 .card:hover{transform:translateY(-4px);border-color:#ffd54a}
 .card:focus{outline:4px solid #ffd54a;outline-offset:2px}
@@ -772,54 +1050,36 @@ html,body{margin:0;padding:0;background:transparent;color:#fff;
 .tag.ok{background:#ffd54a;color:#000}
 .reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#c9c9d1;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.go{margin-top:auto;background:#ffd54a;color:#000;font-weight:800;font-size:15px;
-  text-align:center;padding:9px 6px;border-radius:999px}
-.card:hover .go{background:#ffe58a}
-.panel{width:128px;flex-shrink:0;background:#15151a;border:1px solid #2f2f37;
-  border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:9px}
-.ptitle{font-size:15px;font-weight:800;text-align:center;line-height:1.3;color:#fff}
-.pbtn{width:100%;border:2px solid #ffd54a;background:#ffd54a;color:#000;font-weight:800;font-size:14.5px;
-  line-height:1.3;padding:10px 6px;border-radius:14px;cursor:pointer;font-family:inherit}
-.pbtn.stop{background:transparent;color:#fff;border-color:#fff}
-.pbtn:hover{filter:brightness(1.08)}
-.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px;color:#e6e6ec}
-.speed{display:flex;flex-direction:column;gap:6px}
-.sp{width:100%;border:2px solid #fff;background:transparent;color:#fff;font-weight:700;font-size:14px;
-  padding:6px 4px;border-radius:999px;cursor:pointer;font-family:inherit}
-.sp.on{background:#fff;color:#000}
+.go{display:block;margin-top:auto;background:#ffd54a;color:#000;font-weight:800;font-size:15px;
+  text-align:center;padding:9px 6px;border-radius:999px;text-decoration:none}
+.go:hover{background:#ffe58a}
+.go:focus{outline:4px solid #fff;outline-offset:2px}
 button:focus{outline:4px solid #ffd54a;outline-offset:2px}
-@media (max-width:480px){.nav{display:none}.panel{width:112px;padding:12px 8px}}
+@media (max-width:480px){.nav{display:none}}
 @media (prefers-reduced-motion:reduce){.vinyl{animation:none}.card{transition:none}}
 </style></head>
 <body>
 <div class="wrap">
-  <div class="left">
-    <div class="bar">
-      <div class="hint">옆으로 넘겨서 고르고, 곡 카드를 누르면 유튜브가 열려요</div>
-      <div class="nav">
-        <button class="pill" id="prev" type="button">이전 곡</button>
-        <button class="pill" id="next" type="button">다음 곡</button>
-      </div>
-    </div>
-    <div class="rail" id="rail" role="region" aria-label="추천 노래 목록">__CARDS__</div>
-  </div>
-  <div class="panel" role="group" aria-label="소리로 듣기">
-    <div class="ptitle">소리로 듣기</div>
-    <button class="pbtn" id="play" type="button">추천 곡 읽어 주기</button>
-    <button class="pbtn stop" id="stop" type="button">멈추기</button>
-    <div class="plabel">읽는 속도</div>
-    <div class="speed">
-      <button class="sp" data-rate="0.8" type="button" aria-pressed="false">느리게</button>
-      <button class="sp on" data-rate="1.0" type="button" aria-pressed="true">보통</button>
-      <button class="sp" data-rate="1.3" type="button" aria-pressed="false">빠르게</button>
+  <div class="bar">
+    <div class="hint" id="hint">글을 누르면 읽어 주고, 노란 버튼을 누르면 유튜브가 열려요 (총 __TOTAL__곡)</div>
+    <div class="nav">
+      <button class="pill" id="prev" type="button">이전 곡</button>
+      <button class="pill" id="next" type="button">다음 곡</button>
     </div>
   </div>
+  <div class="rail" id="rail" role="region" aria-label="추천 노래 목록">__CARDS__</div>
 </div>
 <script>
-  var LINES = __LINES__;
+  __INSTALL__
+  function getS() { try { return window.parent.__mcSpeech || null; } catch (e) { return null; } }
+  function isOn() { var s = getS(); return s ? s.isOn() : true; }
+  function speak(t) {
+    var s = getS();
+    if (s) { s.speak(t); return; }
+    try { speechSynthesis.cancel(); var u = new SpeechSynthesisUtterance(t); u.lang = 'ko-KR'; speechSynthesis.speak(u); } catch (e) {}
+  }
+
   var START = __START__;
-  var rate = 1.0;
-  var synth = window.speechSynthesis;
   var rail = document.getElementById('rail');
 
   function step(dir) {
@@ -834,30 +1094,29 @@ button:focus{outline:4px solid #ffd54a;outline-offset:2px}
     if (e.key === 'ArrowRight') { step(1); }
   });
 
+  document.getElementById('hint').onclick = function() { speak(this.innerText); };
+
   var cards = rail.querySelectorAll('.card');
-  if (START > 0 && cards[START]) { rail.scrollLeft = cards[START].offsetLeft - 4; }
-
-  var sps = document.querySelectorAll('.sp');
-  sps.forEach(function(b) {
-    b.onclick = function() {
-      rate = parseFloat(b.getAttribute('data-rate'));
-      sps.forEach(function(x) { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
-      b.classList.add('on');
-      b.setAttribute('aria-pressed', 'true');
-    };
-  });
-
-  document.getElementById('play').onclick = function() {
-    if (!synth) { alert('이 브라우저는 음성 읽기를 지원하지 않습니다.'); return; }
-    synth.cancel();
-    LINES.forEach(function(t) {
-      var u = new SpeechSynthesisUtterance(t);
-      u.lang = 'ko-KR';
-      u.rate = rate;
-      synth.speak(u);
+  cards.forEach(function(c) {
+    function act() {
+      if (isOn()) {
+        speak(c.getAttribute('data-speak'));
+      } else {
+        window.open(c.getAttribute('data-url'), '_blank', 'noopener');
+      }
+    }
+    c.addEventListener('click', function(e) {
+      if (e.target.closest('.go')) { return; }
+      act();
     });
-  };
-  document.getElementById('stop').onclick = function() { if (synth) synth.cancel(); };
+    c.addEventListener('keydown', function(e) {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target === c) {
+        e.preventDefault();
+        act();
+      }
+    });
+  });
+  if (START > 0 && cards[START]) { rail.scrollLeft = cards[START].offsetLeft - 4; }
 </script>
 </body></html>
 """
@@ -870,33 +1129,40 @@ def cards_html(songs: list) -> str:
         c1 = f"hsl({h},85%,58%)"
         c2 = f"hsl({(h + 55) % 360},85%,42%)"
         c3 = f"hsl({(h + 180) % 360},90%,72%)"
-        if s.get("url"):
-            tag_text, tag_cls = "가수 이름으로 검색", "tag"
+        if s.get("tag"):
+            tag_text = s["tag"]
+            tag_cls = "tag ok" if s.get("match") else "tag"
         elif s.get("yt"):
             tag_text, tag_cls = "가수 공식 음원", "tag ok"
         else:
             tag_text, tag_cls = "유튜브에서 찾기", "tag"
-        label = f"{i}번 곡. {s['title']}, {s['artist']}. {tag_text}. 누르면 유튜브에서 열립니다."
+        url = youtube_url(s)
+        speak_text = f"{i}번. {s['artist']}의 {s['title']}. {tag_text}."
+        if s.get("reason"):
+            speak_text += " " + s["reason"]
+        label = f"{i}번 곡. {s['title']}, {s['artist']}. 누르면 곡 설명을 읽어 줍니다."
         out.append(
-            f'<a class="card" href="{esc(youtube_url(s))}" target="_blank" rel="noopener noreferrer" '
-            f'aria-label="{esc(label)}" style="--c1:{c1};--c2:{c2};--c3:{c3}">'
+            f'<div class="card" tabindex="0" role="button" aria-label="{esc(label)}" '
+            f'data-url="{esc(url)}" data-speak="{esc(speak_text)}" '
+            f'style="--c1:{c1};--c2:{c2};--c3:{c3}">'
             f'<div class="art"><span class="num">{i}</span><div class="vinyl"></div></div>'
             f'<div class="title">{esc(s["title"])}</div>'
             f'<div class="artist">{esc(s["artist"])}</div>'
-            f'<div class="{tag_cls}">{tag_text}</div>'
+            f'<div class="{tag_cls}">{esc(tag_text)}</div>'
             f'<div class="reason">{esc(s["reason"])}</div>'
-            '<div class="go">유튜브에서 듣기</div>'
-            '</a>'
+            f'<a class="go" href="{esc(url)}" target="_blank" rel="noopener noreferrer" '
+            f'aria-label="{i}번 곡 유튜브에서 듣기">유튜브에서 듣기</a>'
+            '</div>'
         )
     return "".join(out)
 
 
 def render_carousel(result: dict, start: int):
-    lines = json.dumps(build_speech_lines(result), ensure_ascii=False).replace("</", "<\\/")
     page = (CAROUSEL_TEMPLATE
-            .replace("__LINES__", lines)
             .replace("__START__", str(int(start)))
-            .replace("__CARDS__", cards_html(result["songs"])))
+            .replace("__TOTAL__", str(len(result["songs"])))
+            .replace("__CARDS__", cards_html(result["songs"]))
+            .replace("__INSTALL__", install_js()))
     components.html(page, height=476, scrolling=False)
 
 
@@ -940,6 +1206,7 @@ if pending:
 
 # ---------- 첫 화면 ----------
 def render_home():
+    render_toggle()
     st.markdown(
         '<div class="hero"><div class="disc" aria-hidden="true"></div>'
         '<h1 class="brand">음악 나침반</h1>'
@@ -980,7 +1247,7 @@ def render_home():
         "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다)",
         key="user_text",
         height=150,
-        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래 / 아이유 노래",
+        placeholder="예: 아이유 좋은날 / 봄 / 비 오는 날 듣기 좋은 잔잔한 노래",
     )
 
     st.button("추천받기", type="primary", on_click=set_pending, args=("new",))
@@ -993,6 +1260,8 @@ def render_result():
         st.session_state.page = "home"
         render_home()
         return
+
+    render_toggle()
 
     a = result.get("analysis", {})
     chips = []
