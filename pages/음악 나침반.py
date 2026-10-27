@@ -195,7 +195,12 @@ def parse_json(text: str) -> dict:
         raise ValueError("AI 응답을 해석하지 못했습니다.")
 
 
+def str_list(v) -> list:
+    return [str(x).strip() for x in v if x] if isinstance(v, list) else []
+
+
 def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
+    """1) 사용자가 말한 가수를 찾고, 2) 취향을 분석하고, 3) (가수가 없을 때 쓸) 후보 곡을 받습니다."""
     from google.genai import types
 
     exclude_text = ", ".join(exclude[-50:]) if exclude else "없음"
@@ -207,19 +212,17 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
 {user_text}
 
 [가수 규칙: 매우 중요]
-- 사용자가 특정 가수(또는 그룹) 이름을 말했다면, 오직 그 가수의 곡만 추천하세요.
-- 비슷한 가수, 연관된 가수, 같은 소속사나 같은 장르의 다른 가수는 절대 넣지 마세요.
-- "~같은", "~스타일", "~목소리"라고 말했어도 그 가수 본인의 곡만 추천하세요.
-- 가수를 여러 명 말했다면 말한 가수들의 곡만 추천하세요.
-- requested_artists에는 사용자가 직접 말한 가수 이름을 한글 표기와 영문 표기 모두 적으세요.
-- requested_display에는 사용자가 말한 가수 이름을 가수 한 명당 하나씩, 가장 널리 쓰는 표기로 적으세요.
-- 가수를 말하지 않았다면 두 목록 모두 비워 두고, 분위기와 장르에 맞는 여러 가수의 곡을 추천하세요.
+- 사용자가 특정 가수(또는 그룹) 이름을 말했다면 requested_artists에 그 이름을 한글 표기와 영문 표기 모두 적으세요.
+- requested_display에는 사용자가 말한 가수를 한 명당 하나씩, 가장 널리 쓰는 표기로 적으세요.
+- 가수를 말하지 않았다면 두 목록을 모두 빈 목록으로 두세요.
+- 가수를 말했다면 songs는 빈 목록으로 두세요. (곡은 다른 방법으로 찾습니다.)
+- 가수를 말하지 않았을 때만 songs에 분위기와 장르에 맞는 곡을 쓰세요.
 
-[조건]
+[songs 규칙]
 - 추천 곡 수: {ask_count}곡
 - 이미 나온 곡(중복 금지): {exclude_text}
-- 가수가 직접 발표한 원곡만 고르세요. 리메이크, 커버, MR, 반주, 노래방 버전은 안 됩니다.
-- 실제로 발매된 곡만 고르세요. 곡을 지어내지 마세요.
+- 가수가 직접 발표한 원곡만, 반드시 실제로 발매된 아주 유명한 곡만 쓰세요. 확실하지 않으면 쓰지 마세요.
+- 리메이크, 커버, MR, 반주, 노래방 버전은 안 됩니다.
 - title과 artist는 음원 사이트에 표기된 공식 이름 그대로 쓰세요.
 - artist_alt에는 같은 가수의 다른 언어 표기, title_alt에는 곡 제목의 다른 언어 표기를 쓰세요. 없으면 빈 문자열.
 - 설명은 귀로 듣기 편하도록 짧고 쉬운 한국어 문장으로 쓰세요. 이모지, 특수기호, 마크다운은 쓰지 마세요.
@@ -245,9 +248,6 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
     )
     data = parse_json(resp.text)
 
-    def str_list(v):
-        return [str(x).strip() for x in v if x] if isinstance(v, list) else []
-
     songs = data.get("songs")
     if not isinstance(songs, list):
         songs = []
@@ -270,6 +270,65 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
         "display": str_list(data.get("requested_display")),
         "songs": clean,
     }
+
+
+def pick_from_catalog(user_text: str, cands: list, count: int) -> list:
+    """스토어에 실제로 있는 곡 목록에서, 취향에 맞는 곡의 번호만 AI가 고릅니다."""
+    from google.genai import types
+
+    listing = "\n".join(f"{i + 1}. {c['artist']} - {c['title']}" for i, c in enumerate(cands))
+    prompt = f"""
+아래는 실제로 발매된 곡의 번호 목록입니다. 사용자의 요청에 가장 잘 맞는 곡을 {count}곡 고르세요.
+반드시 목록에 있는 번호만 고르세요. 요청에 분위기나 장르가 없으면 가장 유명한 곡 위주로 고르세요.
+reason은 귀로 듣기 편한 짧은 한국어 한 문장입니다. 이모지와 특수기호는 쓰지 마세요.
+
+[사용자 요청]
+{user_text}
+
+[곡 목록]
+{listing}
+
+[출력 형식: 아래 JSON만 출력]
+{{"picks": [{{"n": 1, "reason": "추천 이유 한 문장"}}]}}
+"""
+    chosen = []
+    used = set()
+    try:
+        resp = generate(
+            prompt,
+            types.GenerateContentConfig(response_mime_type="application/json", temperature=0.3),
+        )
+        data = parse_json(resp.text)
+        for p in data.get("picks", []):
+            if not isinstance(p, dict):
+                continue
+            try:
+                n = int(p.get("n"))
+            except Exception:
+                continue
+            if 1 <= n <= len(cands) and n not in used:
+                used.add(n)
+                chosen.append((n - 1, str(p.get("reason", "")).strip()))
+    except Exception:
+        pass  # AI가 실패해도 목록 앞쪽의 곡으로 채웁니다
+
+    for i in range(len(cands)):
+        if len(chosen) >= count:
+            break
+        if (i + 1) not in used:
+            used.add(i + 1)
+            chosen.append((i, ""))
+
+    out = []
+    for idx, reason in chosen[:count]:
+        c = cands[idx]
+        out.append({
+            "title": c["title"], "title_alt": "",
+            "artist": c["artist"], "artist_alt": "",
+            "reason": reason or f"{c['artist']}의 곡입니다.",
+            "yt": "", "url": "",
+        })
+    return out
 
 
 # ---------- 이름 비교 도구 ----------
@@ -304,41 +363,143 @@ def artist_ok(names: list, store_artist: str) -> bool:
     return False
 
 
-# ---------- 음원 스토어(정확한 표기 확인용, 실패해도 곡을 지우지 않습니다) ----------
+def norm_artist(s: str) -> str:
+    n = norm(s)
+    if n.startswith("the") and len(n) > 5:
+        n = n[3:]
+    return n
+
+
+def same_artist(names: list, store: str) -> bool:
+    """가수 이름이 사실상 같은 경우만 True (비슷한 이름의 다른 가수는 걸러냅니다)."""
+    parts = [store] + re.split(r"\s*(?:,|&|/| feat\.? | ft\.? | with )\s*", store or "", flags=re.I)
+    for p in parts:
+        pn = norm_artist(p)
+        if not pn:
+            continue
+        for n in names:
+            nn = norm_artist(n)
+            if nn and (nn == pn or SequenceMatcher(None, nn, pn).ratio() >= 0.9):
+                return True
+    return False
+
+
+# ---------- 음원 스토어(실제 곡 목록) ----------
 @st.cache_data(ttl=3600, show_spinner=False)
-def itunes_search(term: str, country: str, attribute: str = "", limit: int = 10) -> list:
-    p = {"term": term, "media": "music", "entity": "song", "country": country, "limit": limit}
-    if attribute:
-        p["attribute"] = attribute
-    req = Request("https://itunes.apple.com/search?" + urlencode(p),
-                  headers={"User-Agent": "Mozilla/5.0"})
+def itunes_get(url: str) -> list:
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=8) as r:
         data = json.loads(r.read().decode("utf-8"))
     res = data.get("results", [])
     return res if isinstance(res, list) else []
 
 
-def make_song(c: dict, title=None, artist=None) -> dict:
-    return {
-        "title": title or c["title"],
-        "title_alt": c.get("title_alt", ""),
-        "artist": artist or c["artist"],
-        "artist_alt": c.get("artist_alt", ""),
-        "reason": c.get("reason", ""),
-        "yt": "",
-        "url": "",
-    }
+def itunes_search(term: str, country: str, entity: str = "song",
+                  attribute: str = "", limit: int = 10) -> list:
+    p = {"term": term, "media": "music", "entity": entity, "country": country, "limit": limit}
+    if attribute:
+        p["attribute"] = attribute
+    return itunes_get("https://itunes.apple.com/search?" + urlencode(p))
 
 
-def verify_song(c: dict) -> dict:
-    """스토어에서 찾으면 정확한 표기로 바꾸고, 못 찾으면 AI가 말한 그대로 돌려줍니다."""
+def itunes_lookup_songs(artist_id, country: str) -> list:
+    p = {"id": artist_id, "entity": "song", "limit": 200, "country": country}
+    return itunes_get("https://itunes.apple.com/lookup?" + urlencode(p))
+
+
+BAD_TITLE_RE = re.compile(
+    r"\b(?:inst|instrumental|karaoke|remix|live|mr|cover|sped up|slowed|off vocal)\b|리믹스|반주|노래방|커버|라이브",
+    re.I,
+)
+BAD_ALBUM_RE = re.compile(r"instrumental|karaoke|off vocal|\bmr\b|노래방|반주", re.I)
+
+
+def is_bad_track(title: str, album: str) -> bool:
+    extra = " ".join(re.findall(r"[\(\[](.*?)[\)\]]", title or ""))
+    if " - " in (title or ""):
+        extra += " " + title.split(" - ", 1)[1]
+    if BAD_TITLE_RE.search(extra):
+        return True
+    return bool(BAD_ALBUM_RE.search(album or ""))
+
+
+def artist_catalog(requested: list) -> list:
+    """가수 이름으로 스토어에서 그 가수의 실제 곡 목록을 가져옵니다."""
+    tracks = []
+
+    # 1) 가수를 먼저 찾고, 그 가수의 곡 목록을 가져옵니다
+    found = []  # (artistId, country)
+    seen_ids = set()
+    for name in requested[:4]:
+        hit = False
+        for country in ("KR", "US"):
+            try:
+                results = itunes_search(name, country, entity="musicArtist", limit=5)
+            except Exception:
+                continue
+            for r in results:
+                aid = r.get("artistId")
+                if aid and aid not in seen_ids and same_artist(requested, r.get("artistName", "")):
+                    seen_ids.add(aid)
+                    found.append((aid, country))
+                    hit = True
+                    break
+            if hit:
+                break
+        if len(found) >= 3:
+            break
+
+    for aid, country in found:
+        try:
+            rows = itunes_lookup_songs(aid, country)
+        except Exception:
+            continue
+        for r in rows:
+            if r.get("wrapperType") == "track" and r.get("kind") == "song":
+                tracks.append(r)
+
+    # 2) 가수를 못 찾았으면 가수 이름 검색으로 대신합니다 (같은 가수만 통과)
+    if not tracks:
+        for name in requested[:4]:
+            for country in ("KR", "US"):
+                try:
+                    rows = itunes_search(name, country, entity="song", attribute="artistTerm", limit=50)
+                except Exception:
+                    continue
+                for r in rows:
+                    if r.get("kind") == "song" and same_artist(requested, r.get("artistName", "")):
+                        tracks.append(r)
+
+    out = []
+    seen = set()
+    for r in tracks:
+        title = (r.get("trackName") or "").strip()
+        art = (r.get("artistName") or "").strip()
+        if not title or not art:
+            continue
+        if is_bad_track(title, r.get("collectionName", "")):
+            continue
+        k = norm(title)
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append({"title": title, "artist": art})
+    return out[:60]
+
+
+def verify_song(c: dict):
+    """가수 이름이 없을 때 쓰는 확인. 스토어에서 찾은 곡만 통과시킵니다."""
     term = f"{c['artist']} {c['title']}"
     titles = [c["title"], c.get("title_alt", "")]
     artists = [c["artist"], c.get("artist_alt", "")]
+    had_error = False
+    had_success = False
     for country in ("KR", "US"):
         try:
             results = itunes_search(term, country)
+            had_success = True
         except Exception:
+            had_error = True
             continue
         for r in results:
             if r.get("kind") not in (None, "song"):
@@ -346,15 +507,21 @@ def verify_song(c: dict) -> dict:
             name = r.get("trackName", "")
             art = r.get("artistName", "")
             if any(t and similar(t, name) for t in titles) and artist_ok(artists, art):
-                return make_song(c, title=name, artist=art)
-    return make_song(c)
+                return "ok", {
+                    "title": name, "title_alt": c.get("title_alt", ""),
+                    "artist": art, "artist_alt": c.get("artist_alt", ""),
+                    "reason": c.get("reason", ""), "yt": "", "url": "",
+                }
+    if had_error and not had_success:
+        return "error", None
+    return "nomatch", None
 
 
-def safe_verify(c: dict) -> dict:
+def safe_verify(c: dict):
     try:
         return verify_song(c)
     except Exception:
-        return make_song(c)
+        return "error", None
 
 
 # ---------- 유튜브 공식 음원 찾기 (키 필요 없음) ----------
@@ -467,105 +634,70 @@ def safe_find(song: dict) -> str:
 
 
 # ---------- 추천 ----------
-def artist_catalog(requested: list) -> list:
-    """가수 이름으로 스토어에서 그 가수의 곡 목록을 가져옵니다."""
-    out = []
-    seen_names = set()
-    for name in requested[:4]:
-        if not name or norm(name) in seen_names:
-            continue
-        seen_names.add(norm(name))
-        for country in ("KR", "US"):
-            try:
-                results = itunes_search(name, country, "artistTerm", 50)
-            except Exception:
-                continue
-            for r in results:
-                if r.get("kind") not in (None, "song"):
-                    continue
-                title = r.get("trackName", "")
-                art = r.get("artistName", "")
-                if title and art and artist_ok(requested, art):
-                    out.append({"title": title, "artist": art})
-    return out
-
-
 def recommend(user_text: str, count: int, exclude: list) -> dict:
-    analysis = None
-    requested = []
-    display = []
-    songs = []
     seen = set(norm(x) for x in exclude)
-    tried = list(exclude)
+    data = ask_model(user_text, min(count + 5, 15), exclude)
+    analysis = data["analysis"]
+    requested = data["requested"]
+    display = data["display"]
+    songs = []
 
-    def add(s: dict) -> bool:
-        t = norm(s["title"])
-        if not t or t in seen:
-            return False
-        seen.add(t)
-        songs.append(s)
-        return True
-
-    for attempt in range(2):
-        if len(songs) >= count:
-            break
-        try:
-            data = ask_model(user_text, min(count - len(songs) + 5, 15), tried)
-        except Exception:
-            if attempt == 0:
-                raise
-            break
-        if analysis is None:
-            analysis = data["analysis"]
-        if data["requested"]:
-            requested = data["requested"]
-        if data["display"]:
-            display = data["display"]
+    if requested:
+        # 가수 이름이 있으면: 스토어에 실제 있는 그 가수의 곡만 사용합니다
+        cands = [c for c in artist_catalog(requested) if norm(c["title"]) not in seen]
+        if cands:
+            songs = pick_from_catalog(user_text, cands, count)
+        elif exclude:
+            raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
+        else:
+            name = (display or requested)[0]
+            songs = [{
+                "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
+                "reason": "음원 목록을 찾지 못해, 유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
+                "yt": "", "url": "https://www.youtube.com/results?search_query=" + quote(name),
+            }]
+    else:
+        # 가수 이름이 없으면: AI가 말한 곡 중 스토어에서 확인된 곡만 사용합니다
+        tried = list(exclude)
+        checked = 0
+        errors = 0
         cands = data["songs"]
-        if not cands:
-            continue
-        tried += [c["title"] for c in cands]
-        with ThreadPoolExecutor(max_workers=5) as ex:
-            checked = list(ex.map(safe_verify, cands))
-        for c, s in zip(cands, checked):
-            if requested:
-                names = [s["artist"], s.get("artist_alt", ""), c["artist"], c.get("artist_alt", "")]
-                if not any(n and artist_ok(requested, n) for n in names):
-                    continue  # 다른 가수의 곡은 넣지 않습니다
-            add(s)
+        for attempt in range(2):
+            if attempt == 1:
+                if len(songs) >= count:
+                    break
+                try:
+                    cands = ask_model(user_text, min(count - len(songs) + 5, 15), tried)["songs"]
+                except Exception:
+                    break
+            if not cands:
+                continue
+            tried += [c["title"] for c in cands]
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                results = list(ex.map(safe_verify, cands))
+            for status, s in results:
+                checked += 1
+                if status == "error":
+                    errors += 1
+                if status != "ok":
+                    continue
+                k = norm(s["title"])
+                if not k or k in seen:
+                    continue
+                seen.add(k)
+                songs.append(s)
+        if not songs:
+            if checked and errors == checked:
+                raise RuntimeError("곡 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+            raise ValueError("확인된 곡을 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
 
-    # 가수 이름이 있는데 곡이 모자라면, 그 가수의 실제 곡 목록으로 채웁니다
-    if requested and len(songs) < count:
-        for item in artist_catalog(requested):
-            if len(songs) >= count:
-                break
-            add({
-                "title": item["title"], "title_alt": "",
-                "artist": item["artist"], "artist_alt": "",
-                "reason": f"{item['artist']}의 곡입니다.",
-                "yt": "", "url": "",
-            })
-
-    # 그래도 없으면 가수 이름으로 유튜브 검색 카드를 보여 줍니다
-    if requested and not songs and not exclude:
-        name = (display or requested)[0]
-        songs.append({
-            "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
-            "reason": "유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
-            "yt": "",
-            "url": "https://www.youtube.com/results?search_query=" + quote(name),
-        })
-
-    if not songs:
-        raise ValueError("추천할 곡을 더 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
-
-    final = songs[:count] if len(songs) > count else songs
+    final = songs[:count]
     with ThreadPoolExecutor(max_workers=4) as ex:
         urls = list(ex.map(safe_find, final))
     for s, u in zip(final, urls):
         s["yt"] = u
 
-    return {"analysis": analysis or {}, "songs": final, "artists": (display or [])[:3]}
+    return {"analysis": analysis or {}, "songs": final, "artists": display[:3]}
 
 
 # ---------- 표시용 ----------
