@@ -3,6 +3,7 @@ import html as htmllib
 import json
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from urllib.parse import quote, urlencode
@@ -11,81 +12,63 @@ from urllib.request import Request, urlopen
 import streamlit as st
 import streamlit.components.v1 as components
 
-MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
+# 앞에서부터 시도합니다. 서버가 바쁘거나 모델이 종료되면 다음 모델로 넘어갑니다.
+MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+]
 COUNT = 6  # 한 번에 추천하는 곡 수
-MAX_PARTS = 4  # 쉼표/엔터로 나눠 쓸 수 있는 최대 개수
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
-st.set_page_config(page_title="음악 나침반", layout="centered")
+st.set_page_config(page_title="음악 나침반", page_icon="🧭", layout="centered")
 
 st.markdown(
     """
     <style>
     html, body, [class*="css"] { font-size: 19px; }
-    .stApp {
-        background:
-            radial-gradient(circle at 12% 0%, rgba(138, 63, 252, 0.45) 0%, rgba(138, 63, 252, 0) 42%),
-            radial-gradient(circle at 92% 8%, rgba(255, 61, 110, 0.35) 0%, rgba(255, 61, 110, 0) 38%),
-            #0e0e14;
-    }
-    header[data-testid="stHeader"] { background: transparent; }
+    .stApp { background: linear-gradient(120deg, #0a84ff 0%, #3aa0ff 55%, #7cc0ff 100%); }
     .block-container, [data-testid="stMainBlockContainer"] { max-width: 920px; padding-top: 2rem; }
-    .stApp p, .stApp label, .stApp h1, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
-    [data-testid="stAlert"] { background: #f4f1ff !important; border-radius: 14px; }
+    .stApp p, .stApp label, .stApp h2, .stApp h3, .stApp span { color: #ffffff; }
+    [data-testid="stAlert"] { background: #ffffff !important; border-radius: 14px; }
     [data-testid="stAlert"] p, [data-testid="stAlert"] span { color: #111111 !important; }
 
     .hero { text-align: center; margin: 4px 0 14px 0; }
-    .hero .brand { font-size: 2.3rem; font-weight: 800; color: #ffffff; margin: 12px 0 0 0; padding: 0; }
-    .hero .sub { color: #d9d4ee; font-size: 1.05rem; margin-top: 4px; }
+    .hero .brand { font-size: 2.2rem; font-weight: 800; color: #ffffff; margin: 12px 0 0 0; padding: 0; }
+    .hero .sub { color: #eaf4ff; font-size: 1.05rem; margin-top: 4px; }
     .disc {
-        width: 104px; height: 104px; border-radius: 50%; margin: 0 auto; position: relative;
-        background: conic-gradient(from 0deg, #ff3d6e, #ffb02e, #8a3ffc, #ff3d6e, #ffb02e, #8a3ffc, #ff3d6e);
-        box-shadow: 0 0 40px rgba(255, 176, 46, 0.35);
+        width: 96px; height: 96px; border-radius: 50%; margin: 0 auto; position: relative;
+        background: conic-gradient(from 0deg, #1b1464, #ff2d55, #6a11cb, #00c6ff, #ff2d55, #1b1464);
+        box-shadow: 0 10px 26px rgba(255, 45, 85, 0.35);
         animation: spin 9s linear infinite;
     }
-    .disc::before {
-        content: ""; position: absolute; inset: 0; border-radius: 50%;
-        background: repeating-radial-gradient(circle at center, rgba(0,0,0,0) 0 4px, rgba(0,0,0,0.18) 4px 5px);
-    }
     .disc::after {
-        content: ""; position: absolute; top: 37%; left: 37%; width: 26%; height: 26%;
-        border-radius: 50%; background: #0e0e14; box-shadow: 0 0 0 4px #ffb02e;
+        content: ""; position: absolute; top: 38%; left: 38%; width: 24%; height: 24%;
+        border-radius: 50%; background: #ffffff; box-shadow: inset 0 0 0 3px #dbe8ff;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
 
     .rtitle { font-size: 1.9rem; font-weight: 800; color: #ffffff; }
-    .rsum { color: #e6e1f7; font-size: 1rem; margin: 4px 0 8px 0; line-height: 1.45; }
+    .rsum { color: #ffffff; font-size: 1rem; margin: 4px 0 6px 0; line-height: 1.45; }
     .chip {
-        display: inline-block; background: rgba(255,176,46,0.12); color: #ffb02e;
-        border: 1px solid #ffb02e; border-radius: 999px;
+        display: inline-block; background: rgba(255,255,255,0.25); color: #ffffff;
+        border: 1px solid rgba(255,255,255,0.6); border-radius: 999px;
         padding: 2px 12px; margin: 0 6px 6px 0; font-size: 0.9rem; font-weight: 700;
     }
-    .chip, .stApp .chip { color: #ffb02e; }
 
-    /* 작은 보조 버튼 */
     .stButton > button {
-        font-size: 1rem; font-weight: 700; padding: 0.45rem 0.9rem; min-height: 0;
-        border-radius: 999px; border: 2px solid #ffb02e !important;
-        background: #1a1a24 !important; color: #ffb02e !important;
+        font-size: 1rem; font-weight: 700; padding: 0.4rem 1.1rem; min-height: 0;
+        border-radius: 999px;
+        border: 2px solid #ffffff !important; background: #ffffff !important; color: #0a6cff !important;
     }
-    .stButton > button p { color: #ffb02e !important; font-size: 1rem; }
-    .stButton > button:hover { background: #2a2a38 !important; }
-    /* 큰 주 버튼 (추천받기) */
+    .stButton > button p { color: inherit !important; font-size: 1rem; }
     button[data-testid="stBaseButton-primary"], .stButton > button[kind="primary"] {
-        background: #ffb02e !important; color: #111111 !important; border: 2px solid #ffb02e !important;
-        font-size: 1.25rem; padding: 0.9rem 1rem;
+        background: #0b2a6f !important; color: #ffffff !important; border: 2px solid #0b2a6f !important;
+        padding: 0.5rem 1.4rem;
     }
-    button[data-testid="stBaseButton-primary"] p { color: #111111 !important; font-size: 1.25rem; }
-    button[data-testid="stBaseButton-primary"]:hover { background: #ffc35c !important; }
-
-    .stTextArea textarea {
-        font-size: 1.15rem !important; background: #1a1a24 !important; color: #ffffff !important;
-        border: 2px solid #ffb02e !important; border-radius: 14px !important;
-    }
-    .stTextArea textarea::placeholder { color: #9a96b0 !important; }
-    *:focus { outline: 4px solid #ffffff !important; outline-offset: 2px; }
+    .stTextArea textarea { font-size: 1.1rem !important; background: #ffffff !important; color: #111111 !important; }
+    *:focus { outline: 4px solid #ffd54a !important; outline-offset: 2px; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -105,6 +88,7 @@ defaults = {
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+# 화면이 바뀌어도 입력한 내용이 사라지지 않게 유지
 st.session_state.user_text = st.session_state.user_text
 
 
@@ -126,17 +110,28 @@ def get_client():
 
 
 def generate(contents, config=None):
+    """서버가 바쁘면(503) 잠시 기다려 다시 시도하고, 안 되면 다음 모델로 넘어갑니다."""
     client = get_client()
     last = None
     for model in MODELS:
-        try:
-            return client.models.generate_content(model=model, contents=contents, config=config)
-        except Exception as e:
-            s = str(e)
-            if "404" in s or "NOT_FOUND" in s or "no longer available" in s:
+        for attempt in range(3):
+            try:
+                return client.models.generate_content(model=model, contents=contents, config=config)
+            except Exception as e:
                 last = e
-                continue
-            raise
+                s = str(e)
+                low = s.lower()
+                if "404" in s or "NOT_FOUND" in s or "no longer available" in low:
+                    break  # 이 모델은 못 쓰므로 다음 모델로
+                if "429" in s or "RESOURCE_EXHAUSTED" in s:
+                    break  # 이 모델의 사용량 초과, 다음 모델로
+                if ("503" in s or "UNAVAILABLE" in s or "high demand" in low
+                        or "overloaded" in low or "500" in s or "INTERNAL" in s or "deadline" in low):
+                    if attempt < 2:
+                        time.sleep(1.0 + attempt)
+                        continue
+                    break
+                raise
     raise last if last else RuntimeError("모델을 찾지 못했습니다.")
 
 
@@ -146,6 +141,8 @@ def friendly_error(e: Exception) -> str:
     if "NO_KEY" in msg:
         return ("GEMINI_API_KEY가 설정되지 않았습니다. "
                 "Streamlit Cloud의 Secrets에 GEMINI_API_KEY를 등록해 주세요.")
+    if "503" in msg or "UNAVAILABLE" in msg or "high demand" in low or "overloaded" in low:
+        return "지금 AI 서버에 사용자가 몰려 있습니다. 잠시 후 추천받기를 다시 눌러 주세요."
     if "404" in msg or "NOT_FOUND" in msg:
         return "사용할 수 있는 AI 모델을 찾지 못했습니다. app.py 위쪽 MODELS 목록의 모델 이름을 확인해 주세요."
     if "429" in msg or "quota" in low or "resource_exhausted" in low:
@@ -204,6 +201,7 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
 [조건]
 - 후보 곡 수: {ask_count}곡
 - 이미 나온 곡(중복 금지): {exclude_text}
+- 가수가 직접 발표한 원곡만 고르세요. 리메이크, 커버, MR, 반주, 노래방 버전은 안 됩니다.
 - 멜론, 지니, 유튜브 같은 음원 사이트에 실제로 발매된 곡만 고르세요.
 - 반드시 잘 알려진 곡만 고르세요. 제목이나 가수가 조금이라도 불확실하면 넣지 마세요.
 - 곡을 지어내지 마세요. 가수와 곡 제목의 조합이 실제와 정확히 일치해야 합니다.
@@ -291,7 +289,8 @@ def itunes_search(term: str, country: str) -> list:
         "term": term, "media": "music", "entity": "song",
         "country": country, "limit": 10,
     })
-    req = Request("https://itunes.apple.com/search?" + params, headers={"User-Agent": UA})
+    req = Request("https://itunes.apple.com/search?" + params,
+                  headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=8) as r:
         data = json.loads(r.read().decode("utf-8"))
     res = data.get("results", [])
@@ -320,10 +319,10 @@ def verify_song(c: dict):
                 return "ok", {
                     "id": r.get("trackId"),
                     "title": name,
+                    "title_alt": c.get("title_alt", ""),
                     "artist": art,
+                    "artist_alt": c.get("artist_alt", ""),
                     "reason": c.get("reason", ""),
-                    "names": [x for x in [c["artist"], c.get("artist_alt", ""), art] if x],
-                    "titles": [x for x in [c["title"], c.get("title_alt", ""), name] if x],
                     "yt": "",
                 }
     if had_error and not had_success:
@@ -338,136 +337,111 @@ def safe_verify(c: dict):
         return "error", None
 
 
-# ---------- 유튜브: 가수 본인이 올린 공식 음원만 찾기 ----------
+# ---------- 유튜브 공식 음원 찾기 (키 필요 없음) ----------
+# 가수 본인 채널 또는 '가수명 - Topic' 채널의 영상만 고릅니다. MR, 반주, 노래방, 커버, 리믹스는 제외합니다.
 BAD_WORDS = [
-    "mr", "m/r", "엠알", "inst", "instrumental", "karaoke", "노래방", "반주", "제거",
-    "cover", "커버", "remix", "리믹스", "nightcore", "sped up", "slowed", "8d",
-    "reaction", "리액션", "tutorial", "연주", "piano ver", "acoustic ver",
+    "instrumental", "karaoke", "노래방", "반주", "cover", "커버", "remix", "리믹스",
+    "reaction", "리액션", "sped up", "slowed", "nightcore", "금영", "tj미디어",
 ]
+BAD_REGEX = re.compile(r"(?<![a-z])(m/?r|inst)(?![a-z])")
 
 
-def has_bad_word(video_title: str, own_text: str) -> bool:
-    vt = video_title.lower()
-    own = own_text.lower()
-    for w in BAD_WORDS:
-        if re.search(r"(?<![a-z0-9가-힣])" + re.escape(w) + r"(?![a-z0-9가-힣])", vt):
-            # 곡 제목이나 가수 이름에 원래 들어 있는 말이면 예외 (예: Mr. Brightside)
-            if re.search(r"(?<![a-z0-9가-힣])" + re.escape(w) + r"(?![a-z0-9가-힣])", own):
-                continue
+def is_bad_video(video_title: str, song_title: str) -> bool:
+    v = (video_title or "").lower()
+    s = (song_title or "").lower()
+    for kw in BAD_WORDS:
+        if kw in v and kw not in s:
             return True
+    if BAD_REGEX.search(v) and not BAD_REGEX.search(s):
+        return True
     return False
 
 
-def parse_length(txt: str) -> int:
-    try:
-        parts = [int(p) for p in txt.split(":")]
-    except Exception:
-        return 0
-    sec = 0
-    for p in parts:
-        sec = sec * 60 + p
-    return sec
+def channel_score(channel: str, artists: list) -> int:
+    ch = (channel or "").strip()
+    if re.search(r"\s*-\s*topic$", ch, flags=re.I):
+        base = re.sub(r"\s*-\s*topic$", "", ch, flags=re.I).strip()
+        return 2 if artist_ok(artists, base) else 0
+    return 1 if artist_ok(artists, ch) else 0
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def yt_search(query: str) -> list:
+@st.cache_data(ttl=86400, show_spinner=False)
+def yt_search(q: str) -> list:
+    """유튜브 검색 결과 페이지를 읽어 영상 목록을 만듭니다."""
     url = "https://www.youtube.com/results?" + urlencode(
-        {"search_query": query, "hl": "ko", "gl": "KR"})
+        {"search_query": q, "hl": "ko", "gl": "KR"}
+    )
     req = Request(url, headers={
-        "User-Agent": UA,
-        "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-        "Cookie": "CONSENT=YES+cb; SOCS=CAI",
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+        "Accept-Language": "ko-KR,ko;q=0.9",
+        "Cookie": "CONSENT=YES+1; SOCS=CAI",
     })
     with urlopen(req, timeout=8) as r:
-        page = r.read().decode("utf-8", "ignore")
+        page = r.read().decode("utf-8", errors="ignore")
     m = re.search(r"var ytInitialData = (\{.*?\});</script>", page, re.DOTALL)
     if not m:
-        m = re.search(r'ytInitialData"\]\s*=\s*(\{.*?\});', page, re.DOTALL)
-    if not m:
-        return []
+        raise ValueError("no data")  # 실패한 결과는 저장되지 않도록 오류로 처리
     data = json.loads(m.group(1))
 
-    found = []
+    out = []
 
-    def walk(o, depth=0):
-        if depth > 40:
-            return
+    def walk(o):
         if isinstance(o, dict):
             vr = o.get("videoRenderer")
             if isinstance(vr, dict) and vr.get("videoId"):
-                found.append(vr)
+                title = "".join(x.get("text", "") for x in (vr.get("title") or {}).get("runs", []))
+                owner = "".join(x.get("text", "") for x in (vr.get("ownerText") or {}).get("runs", []))
+                out.append({"id": vr["videoId"], "title": title, "channel": owner})
             for v in o.values():
-                walk(v, depth + 1)
+                walk(v)
         elif isinstance(o, list):
             for v in o:
-                walk(v, depth + 1)
+                walk(v)
 
     walk(data)
-    items = []
-    for vr in found:
+    if not out:
+        raise ValueError("no videos")
+    return out[:15]
+
+
+def find_official_youtube(song: dict) -> str:
+    titles = [song["title"], song.get("title_alt", "")]
+    artists = [song["artist"], song.get("artist_alt", "")]
+    queries = [
+        f"{song['artist']} {song['title']} Provided to YouTube by",
+        f"{song['artist']} {song['title']} topic",
+        f"{song['artist']} {song['title']} official audio",
+    ]
+    for q in queries:
         try:
-            title = "".join(x.get("text", "") for x in vr["title"]["runs"])
-            owner = vr.get("ownerText", {}).get("runs", [{}])[0].get("text", "")
-            badge = False
-            for b in vr.get("ownerBadges", []) or []:
-                br = b.get("metadataBadgeRenderer", {})
-                if "ARTIST" in str(br.get("style", "")).upper() or \
-                        "artist" in str(br.get("tooltip", "")).lower():
-                    badge = True
-            length = parse_length(vr.get("lengthText", {}).get("simpleText", ""))
-            items.append({"id": vr["videoId"], "title": title, "channel": owner,
-                          "badge": badge, "len": length})
+            items = yt_search(q)
         except Exception:
             continue
-        if len(items) >= 15:
-            break
-    return items
+        best, best_score = "", 0
+        for it in items:
+            vt = htmllib.unescape(it.get("title", "") or "")
+            ch = htmllib.unescape(it.get("channel", "") or "")
+            vid = it.get("id")
+            if not vid or not vt:
+                continue
+            if is_bad_video(vt, song["title"]):
+                continue
+            if not any(t and (norm(t) in norm(vt) or similar(t, vt)) for t in titles):
+                continue
+            sc = channel_score(ch, artists)
+            if sc > best_score:
+                best, best_score = vid, sc
+        if best:
+            return "https://www.youtube.com/watch?v=" + best
+    return ""
 
 
-def pick_official(items: list, titles: list, names: list) -> str:
-    own = " ".join(titles + names)
-    best_id, best_score = "", 0
-    for it in items:
-        vt = it["title"]
-        if has_bad_word(vt, own):
-            continue
-        if not it["len"] or it["len"] < 60 or it["len"] > 720:
-            continue
-        nvt = norm(vt)
-        if not any(norm(t) and norm(t) in nvt for t in titles):
-            continue
-        ch = it["channel"]
-        score = 0
-        if it["badge"]:
-            score += 3
-        base = ch[:-7].strip() if ch.endswith("- Topic") else ch
-        if artist_ok(names, base):
-            score += 3
-        elif any(len(norm(n)) >= 2 and norm(n) in norm(base) for n in names):
-            score += 3
-        if score == 0:
-            continue  # 가수 본인 채널로 확인되지 않으면 사용하지 않음
-        low = vt.lower()
-        if "official audio" in low or "audio" in low or "공식" in vt:
-            score += 1
-        if score > best_score:
-            best_id, best_score = it["id"], score
-    return best_id
-
-
-def attach_youtube(song: dict) -> dict:
+def safe_find(song: dict) -> str:
     try:
-        name = song["names"][0]
-        title = song["titles"][0]
-        for q in (f"{name} {title} official audio", f"{name} {title}"):
-            items = yt_search(q)
-            vid = pick_official(items, song["titles"], song["names"])
-            if vid:
-                song["yt"] = vid
-                break
+        return find_official_youtube(song)
     except Exception:
-        pass
-    return song
+        return ""
 
 
 def recommend(user_text: str, count: int, exclude: list) -> dict:
@@ -502,6 +476,7 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
                 errors += 1
             if status != "ok":
                 continue
+            # 가수를 지정했다면 그 가수의 곡만 통과
             if requested and not artist_ok(requested, song["artist"]):
                 continue
             key = song["id"] or norm(song["title"] + song["artist"])
@@ -518,70 +493,12 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
         raise ValueError("확인된 곡을 더 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
 
     final = verified[:count]
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        final = list(ex.map(attach_youtube, final))
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        urls = list(ex.map(safe_find, final))
+    for s, u in zip(final, urls):
+        s["yt"] = u
+
     return {"analysis": analysis or {}, "songs": final}
-
-
-# ---------- 여러 가수 검색 (쉼표 또는 엔터로 구분) ----------
-def split_inputs(text: str) -> list:
-    parts = [p.strip() for p in re.split(r"[,，、;；\n]+", text or "")]
-    out, seen = [], set()
-    for p in parts:
-        if p and p not in seen:
-            seen.add(p)
-            out.append(p)
-    return out[:MAX_PARTS]
-
-
-def recommend_multi(text: str, count: int, exclude: list) -> dict:
-    parts = split_inputs(text)
-    if len(parts) <= 1:
-        return recommend(text, count, exclude)  # 하나뿐이면 예전과 똑같이 동작
-
-    per = max(2, -(-count // len(parts)))  # 가수당 곡 수 (올림)
-
-    def work(p):
-        try:
-            return p, recommend(p, per, exclude), None
-        except Exception as e:
-            return p, None, e
-
-    with ThreadPoolExecutor(max_workers=len(parts)) as ex:
-        outs = list(ex.map(work, parts))
-
-    ok = [(p, r) for p, r, e in outs if r]
-    failed = [p for p, r, e in outs if not r]
-    if not ok:
-        raise next(e for p, r, e in outs if e)
-
-    # 가수별 곡을 번갈아 섞기 (A1, B1, A2, B2 ...)
-    lists = [r["songs"] for _, r in ok]
-    songs, seen = [], set()
-    for i in range(max(len(l) for l in lists)):
-        for l in lists:
-            if i < len(l):
-                s = l[i]
-                key = norm(s["title"] + s["artist"])
-                if key not in seen:
-                    seen.add(key)
-                    songs.append(s)
-
-    moods, genres = [], []
-    for _, r in ok:
-        a = r["analysis"]
-        for x in (a.get("mood") or []) if isinstance(a.get("mood"), list) else []:
-            if x and x not in moods:
-                moods.append(x)
-        for x in (a.get("genre") or []) if isinstance(a.get("genre"), list) else []:
-            if x and x not in genres:
-                genres.append(x)
-
-    summary = "입력하신 " + ", ".join(p for p, _ in ok) + "의 노래를 각각 골랐습니다."
-    if failed:
-        summary += " " + ", ".join(failed) + "은(는) 곡을 찾지 못했습니다."
-    return {"analysis": {"summary": summary, "mood": moods[:3], "genre": genres[:3]},
-            "songs": songs}
 
 
 # ---------- 표시용 ----------
@@ -591,9 +508,9 @@ def esc(x) -> str:
 
 def youtube_url(song: dict) -> str:
     if song.get("yt"):
-        return "https://www.youtube.com/watch?v=" + song["yt"]
-    q = (f"{song['artist']} {song['title']} official audio "
-         "-MR -mr -instrumental -inst -karaoke -노래방 -반주 -cover -커버")
+        return song["yt"]
+    q = (f"{song['artist']} {song['title']} Provided to YouTube by "
+         "-MR -mr -instrumental -karaoke -노래방 -반주 -cover -커버")
     return "https://www.youtube.com/results?search_query=" + quote(q)
 
 
@@ -619,27 +536,26 @@ CAROUSEL_TEMPLATE = """
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent;color:#fff;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif}
-.wrap{display:flex;gap:12px;height:446px;padding:2px}
+.wrap{display:flex;gap:12px;height:466px;padding:2px}
 .left{flex:1;min-width:0;display:flex;flex-direction:column}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
-.hint{font-size:14px;font-weight:700;line-height:1.35;color:#e6e1f7}
+.hint{font-size:14px;font-weight:700;line-height:1.35}
 .nav{display:flex;gap:6px;flex-shrink:0}
-.pill{border:2px solid #ffb02e;background:#1a1a24;color:#ffb02e;font-weight:800;font-size:14px;
-  padding:7px 12px;border-radius:999px;cursor:pointer;font-family:inherit}
-.pill:hover{background:#2a2a38}
+.pill{border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:14px;
+  padding:6px 12px;border-radius:999px;cursor:pointer;font-family:inherit}
+.pill:hover{background:#eaf3ff}
 .rail{flex:1;min-height:0;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;
   position:relative;padding:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .rail::-webkit-scrollbar{display:none}
-.card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#1b1b26;border-radius:22px;
-  border:1px solid rgba(255,255,255,.1);
-  padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#fff;
-  box-shadow:0 14px 30px rgba(0,0,0,.5);transition:transform .15s,border-color .15s}
-.card:hover{transform:translateY(-4px);border-color:#ffb02e}
-.card:focus{outline:4px solid #fff;outline-offset:2px}
+.card{flex:0 0 78%;max-width:214px;scroll-snap-align:start;background:#fff;border-radius:22px;
+  padding:12px;display:flex;flex-direction:column;text-decoration:none;color:#111;
+  box-shadow:0 14px 30px rgba(0,40,120,.28);transition:transform .15s}
+.card:hover{transform:translateY(-4px)}
+.card:focus{outline:4px solid #ffd54a;outline-offset:2px}
 .art{position:relative;height:130px;border-radius:16px;overflow:hidden;flex-shrink:0;
   background:linear-gradient(135deg,var(--c1),var(--c2))}
 .num{position:absolute;left:12px;top:6px;font-size:42px;font-weight:900;line-height:1;
-  color:rgba(255,255,255,.95);text-shadow:0 2px 8px rgba(0,0,0,.35)}
+  color:rgba(255,255,255,.95);text-shadow:0 2px 8px rgba(0,0,0,.25)}
 .vinyl{position:absolute;right:-34px;bottom:-34px;width:128px;height:128px;border-radius:50%;
   background:
    conic-gradient(rgba(255,255,255,0) 0 20%,rgba(255,255,255,.2) 25%,rgba(255,255,255,0) 30% 70%,rgba(255,255,255,.2) 75%,rgba(255,255,255,0) 80%),
@@ -648,28 +564,30 @@ html,body{margin:0;padding:0;background:transparent;color:#fff;
 .vinyl::after{content:"";position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;
   border-radius:50%;background:var(--c3);box-shadow:0 0 0 5px rgba(255,255,255,.35)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.title{margin-top:10px;font-size:18px;font-weight:800;line-height:1.3;word-break:keep-all;color:#fff;
+.title{margin-top:10px;font-size:18px;font-weight:800;line-height:1.3;word-break:keep-all;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.artist{margin-top:2px;font-size:15px;font-weight:700;color:#ffb02e}
-.reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#cfcbe0;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.go{margin-top:auto;background:#ffb02e;color:#111;font-weight:800;font-size:15px;
-  text-align:center;padding:8px 6px;border-radius:16px;line-height:1.3}
-.go small{display:block;font-size:12px;font-weight:700}
-.card:hover .go{background:#ffc35c}
-.panel{width:128px;flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.2);
+.artist{margin-top:2px;font-size:15px;font-weight:700;color:#0a6cff}
+.tag{margin-top:6px;align-self:flex-start;font-size:12.5px;font-weight:800;padding:2px 10px;
+  border-radius:999px;border:1.5px solid #0a6cff;color:#0a6cff}
+.tag.ok{background:#0a6cff;color:#fff}
+.reason{margin-top:6px;font-size:13.5px;line-height:1.45;color:#555;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.go{margin-top:auto;background:#d60000;color:#fff;font-weight:800;font-size:15px;
+  text-align:center;padding:9px 6px;border-radius:999px}
+.card:hover .go{background:#a80000}
+.panel{width:128px;flex-shrink:0;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.55);
   border-radius:22px;padding:14px 10px;display:flex;flex-direction:column;gap:9px}
-.ptitle{font-size:16px;font-weight:800;text-align:center;line-height:1.3;color:#fff}
-.pbtn{width:100%;border:2px solid #ffb02e;background:#ffb02e;color:#111;font-weight:800;font-size:15px;
-  line-height:1.3;padding:12px 6px;border-radius:14px;cursor:pointer;font-family:inherit}
-.pbtn.stop{background:transparent;color:#ffb02e}
-.pbtn:hover{filter:brightness(1.08)}
-.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px;color:#e6e1f7}
+.ptitle{font-size:15px;font-weight:800;text-align:center;line-height:1.3}
+.pbtn{width:100%;border:2px solid #fff;background:#fff;color:#0a6cff;font-weight:800;font-size:14.5px;
+  line-height:1.3;padding:10px 6px;border-radius:14px;cursor:pointer;font-family:inherit}
+.pbtn.stop{background:transparent;color:#fff}
+.pbtn:hover{filter:brightness(.95)}
+.plabel{font-size:13px;font-weight:700;text-align:center;margin-top:4px}
 .speed{display:flex;flex-direction:column;gap:6px}
-.sp{width:100%;border:2px solid rgba(255,255,255,.55);background:transparent;color:#fff;font-weight:700;font-size:14px;
-  padding:7px 4px;border-radius:999px;cursor:pointer;font-family:inherit}
-.sp.on{background:#ffb02e;border-color:#ffb02e;color:#111}
-button:focus{outline:4px solid #fff;outline-offset:2px}
+.sp{width:100%;border:2px solid #fff;background:transparent;color:#fff;font-weight:700;font-size:14px;
+  padding:6px 4px;border-radius:999px;cursor:pointer;font-family:inherit}
+.sp.on{background:#0b2a6f;border-color:#0b2a6f}
+button:focus{outline:4px solid #ffd54a;outline-offset:2px}
 @media (max-width:480px){.nav{display:none}.panel{width:112px;padding:12px 8px}}
 @media (prefers-reduced-motion:reduce){.vinyl{animation:none}.card{transition:none}}
 </style></head>
@@ -749,24 +667,22 @@ def cards_html(songs: list) -> str:
     out = []
     for i, s in enumerate(songs, 1):
         h = int(hashlib.md5((s["title"] + s["artist"]).encode("utf-8")).hexdigest()[:6], 16) % 360
-        c1 = f"hsl({h},80%,55%)"
-        c2 = f"hsl({(h + 55) % 360},80%,34%)"
-        c3 = f"hsl({(h + 180) % 360},90%,70%)"
-        if s.get("yt"):
-            go_main, go_sub = "유튜브에서 듣기", "가수 공식 음원"
-            note = "가수 공식 음원 영상으로 연결됩니다."
-        else:
-            go_main, go_sub = "유튜브에서 찾기", "공식 음원 검색"
-            note = "공식 음원 검색 결과로 연결됩니다."
-        label = f"{i}번 곡. {s['title']}, {s['artist']}. 누르면 유튜브가 열립니다. {note}"
+        c1 = f"hsl({h},85%,58%)"
+        c2 = f"hsl({(h + 55) % 360},85%,42%)"
+        c3 = f"hsl({(h + 180) % 360},90%,72%)"
+        official = bool(s.get("yt"))
+        tag_text = "가수 공식 음원" if official else "유튜브 검색"
+        tag_cls = "tag ok" if official else "tag"
+        label = f"{i}번 곡. {s['title']}, {s['artist']}. {tag_text}. 누르면 유튜브에서 열립니다."
         out.append(
             f'<a class="card" href="{esc(youtube_url(s))}" target="_blank" rel="noopener noreferrer" '
             f'aria-label="{esc(label)}" style="--c1:{c1};--c2:{c2};--c3:{c3}">'
-            f'<div class="art" aria-hidden="true"><span class="num">{i}</span><div class="vinyl"></div></div>'
+            f'<div class="art"><span class="num">{i}</span><div class="vinyl"></div></div>'
             f'<div class="title">{esc(s["title"])}</div>'
             f'<div class="artist">{esc(s["artist"])}</div>'
+            f'<div class="{tag_cls}">{tag_text}</div>'
             f'<div class="reason">{esc(s["reason"])}</div>'
-            f'<div class="go">{go_main}<small>{go_sub}</small></div>'
+            '<div class="go">유튜브에서 듣기</div>'
             '</a>'
         )
     return "".join(out)
@@ -778,7 +694,7 @@ def render_carousel(result: dict, start: int):
             .replace("__LINES__", lines)
             .replace("__START__", str(int(start)))
             .replace("__CARDS__", cards_html(result["songs"])))
-    components.html(page, height=456, scrolling=False)
+    components.html(page, height=476, scrolling=False)
 
 
 # ---------- 콜백 ----------
@@ -801,7 +717,7 @@ if pending:
         if not text:
             raise ValueError("먼저 마이크로 말하거나 내용을 입력해 주세요.")
         with st.spinner("취향을 분석하고 노래를 찾는 중입니다. 잠시만 기다려 주세요."):
-            res = recommend_multi(text, COUNT, st.session_state.history if more else [])
+            res = recommend(text, COUNT, st.session_state.history if more else [])
         if more:
             st.session_state.start = len(st.session_state.result["songs"])
             st.session_state.result["songs"] += res["songs"]
@@ -834,7 +750,7 @@ def render_home():
     audio = None
     if hasattr(st, "audio_input"):
         try:
-            audio = st.audio_input("마이크 (눌러서 말하고, 끝나면 다시 눌러 주세요)")
+            audio = st.audio_input("마이크로 말하기 (눌러서 말하고, 끝나면 다시 눌러 주세요)")
         except Exception:
             audio = None
 
@@ -856,15 +772,13 @@ def render_home():
             st.error(friendly_error(e))
 
     st.text_area(
-        "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다. "
-        "가수를 여러 명 찾으려면 쉼표(,)나 엔터로 나눠 써 주세요)",
+        "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다)",
         key="user_text",
         height=150,
-        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래\n또는: 릴러말즈, 다이나믹듀오",
+        placeholder="예: 비 오는 날 듣기 좋은 잔잔한 노래 / 아이유 노래",
     )
 
-    st.button("추천받기", type="primary", use_container_width=True,
-              on_click=set_pending, args=("new",))
+    st.button("추천받기", type="primary", on_click=set_pending, args=("new",))
 
 
 # ---------- 추천 곡 화면 ----------
@@ -897,10 +811,9 @@ def render_result():
 
     b1, b2, _sp = st.columns([2, 2, 3])
     with b1:
-        st.button("다른 곡 더 추천받기", use_container_width=True,
-                  on_click=set_pending, args=("more",))
+        st.button("다른 곡 더 추천받기", on_click=set_pending, args=("more",))
     with b2:
-        st.button("다시 입력하기", use_container_width=True, on_click=go_home)
+        st.button("처음부터 다시 입력하기", on_click=go_home)
 
 
 if st.session_state.page == "result":
