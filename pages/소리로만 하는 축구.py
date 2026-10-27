@@ -34,7 +34,7 @@ st.markdown("""
 st.markdown('<div class="big-title">⚽ Real PK Audio Soccer</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">실사 그래픽 PK 게임! 키퍼가 막으면 라이프 차감 없음 & 환호/야유 음성 연동</div>', unsafe_allow_html=True)
 
-game_html = """
+game_html = r"""
 <!DOCTYPE html>
 <html>
 <head>
@@ -140,7 +140,6 @@ game_html = """
     let feedbackTimer = 0;
     let voicedNow = false;
 
-    // 한국어 TTS 음성
     function speak(text) {
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
@@ -161,7 +160,6 @@ game_html = """
         }
     }
 
-    // 3D 입체 sound
     function playSoccerSound(side, duration) {
         if (!audioCtx) return;
 
@@ -178,4 +176,89 @@ game_html = """
 
         gainNode.gain.setValueAtTime(0.01, audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.8, audioCtx.currentTime + duration - 0.05);
-        gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime
+        gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+
+        osc.connect(gainNode);
+        gainNode.connect(panner);
+        panner.connect(audioCtx.destination);
+
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function playCheerCrowdSound() {
+        if (!audioCtx) return;
+        const bufferSize = audioCtx.sampleRate * 1.5;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(850, audioCtx.currentTime);
+        filter.Q.setValueAtTime(1.4, audioCtx.currentTime);
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        noise.start();
+        noise.stop(audioCtx.currentTime + 1.5);
+    }
+
+    function playBooingCrowdSound() {
+        if (!audioCtx) return;
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc1.type = 'sawtooth';
+        osc2.type = 'sine';
+
+        osc1.frequency.setValueAtTime(110, audioCtx.currentTime);
+        osc1.frequency.linearRampToValueAtTime(95, audioCtx.currentTime + 1.2);
+
+        osc2.frequency.setValueAtTime(115, audioCtx.currentTime);
+        osc2.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 1.2);
+
+        gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.2);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 1.2);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc1.start();
+        osc2.start();
+        osc1.stop(audioCtx.currentTime + 1.2);
+        osc2.stop(audioCtx.currentTime + 1.2);
+    }
+
+    function playHitEffect() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(350, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(750, audioCtx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+    }
+
+    function drawStadium()
