@@ -261,4 +261,456 @@ game_html = r"""
         osc.stop(audioCtx.currentTime + 0.15);
     }
 
-    function drawStadium()
+    function drawStadium() {
+        ctx.fillStyle = '#cfd8dc';
+        ctx.fillRect(0, 0, canvas.width, 160);
+
+        const colors = ['#b71c1c', '#0d47a1', '#ffffff', '#37474f', '#880e4f'];
+        for (let i = 0; i < 220; i++) {
+            let rx = (i * 13) % canvas.width;
+            let ry = (i * 7) % 95;
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.fillRect(rx, ry, 6, 8);
+            ctx.fillStyle = '#ffcc80';
+            ctx.fillRect(rx + 1, ry - 3, 4, 3);
+        }
+
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(160, 0, 15, 95);
+        ctx.fillRect(310, 0, 15, 95);
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 95, canvas.width, 25);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(310, 97, 160, 21);
+        
+        ctx.fillStyle = '#e65100';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('EA SPORTS', 320, 112);
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('FIFA ONLINE 3', 150, 112);
+
+        ctx.strokeStyle = '#f5f5f5';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(40, 35, 400, 110);
+
+        ctx.strokeStyle = 'rgba(200, 200, 200, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 52; x < 440; x += 12) {
+            ctx.moveTo(x, 35);
+            ctx.lineTo(x, 145);
+        }
+        for (let y = 45; y < 145; y += 10) {
+            ctx.moveTo(40, y);
+            ctx.lineTo(440, y);
+        }
+        ctx.stroke();
+
+        let pitchGrad = ctx.createLinearGradient(0, 140, 0, canvas.height);
+        pitchGrad.addColorStop(0, '#558b2f');
+        pitchGrad.addColorStop(0.3, '#33691e');
+        pitchGrad.addColorStop(1, '#1b5e20');
+        ctx.fillStyle = pitchGrad;
+        ctx.fillRect(0, 140, canvas.width, canvas.height - 140);
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+        for (let y = 145; y < canvas.height; y += 28) {
+            ctx.fillRect(0, y, canvas.width, 14);
+        }
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(30, 145);
+        ctx.lineTo(450, 145);
+        ctx.stroke();
+
+        drawKeeper();
+        drawKicker();
+    }
+
+    function drawKeeper() {
+        let x = keeperPos.x;
+        let y = keeperPos.y;
+
+        ctx.save();
+        ctx.translate(x, y);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, 28, 16, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (keeperPos.isDiving) {
+            let dir = keeperPos.diveSide === 'left' ? -1 : 1;
+            ctx.rotate(dir * 0.8);
+
+            ctx.fillStyle = '#1b1b1b';
+            ctx.fillRect(-8, -15, 16, 26);
+
+            ctx.fillStyle = '#ffcc80';
+            ctx.beginPath();
+            ctx.arc(0, -22, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#1b1b1b';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(-6, -10);
+            ctx.lineTo(dir * 30, -15);
+            ctx.stroke();
+
+            ctx.fillStyle = '#80deea';
+            ctx.beginPath();
+            ctx.arc(dir * 32, -15, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#1b1b1b';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(-4, 10);
+            ctx.lineTo(-15, 25);
+            ctx.moveTo(4, 10);
+            ctx.lineTo(15, 25);
+            ctx.stroke();
+
+            ctx.fillStyle = '#80deea';
+            ctx.fillRect(-18, 24, 6, 4);
+            ctx.fillRect(12, 24, 6, 4);
+        } else {
+            ctx.fillStyle = '#ffcc80';
+            ctx.beginPath();
+            ctx.arc(0, -22, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#4e342e';
+            ctx.beginPath();
+            ctx.arc(0, -24, 6, Math.PI, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#1b1b1b';
+            ctx.fillRect(-10, -16, 20, 24);
+            ctx.fillStyle = '#ffd54f';
+            ctx.fillRect(-3, -12, 6, 5);
+
+            ctx.strokeStyle = '#1b1b1b';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(-10, -12);
+            ctx.lineTo(-20, -2);
+            ctx.moveTo(10, -12);
+            ctx.lineTo(20, -2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#80deea';
+            ctx.beginPath();
+            ctx.arc(-21, -1, 4, 0, Math.PI * 2);
+            ctx.arc(21, -1, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(-9, 8, 18, 10);
+
+            ctx.strokeStyle = '#111111';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(-5, 18);
+            ctx.lineTo(-7, 28);
+            ctx.moveTo(5, 18);
+            ctx.lineTo(7, 28);
+            ctx.stroke();
+
+            ctx.fillStyle = '#80deea';
+            ctx.fillRect(-10, 27, 6, 4);
+            ctx.fillRect(4, 27, 6, 4);
+        }
+
+        ctx.restore();
+    }
+
+    function drawKicker() {
+        ctx.save();
+        ctx.translate(330, 325);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(0, 42, 14, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#5d4037';
+        ctx.beginPath();
+        ctx.arc(0, -8, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-12, 0, 24, 26);
+
+        ctx.fillStyle = '#263238';
+        ctx.font = '900 8px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('BALE', 0, 8);
+        ctx.font = '900 12px sans-serif';
+        ctx.fillText('32', 0, 21);
+
+        ctx.fillStyle = '#eceff1';
+        ctx.fillRect(-11, 26, 22, 10);
+
+        ctx.fillStyle = '#ffcc80';
+        ctx.fillRect(-9, 36, 6, 6);
+        ctx.fillRect(3, 36, 6, 6);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-10, 40, 7, 4);
+        ctx.fillRect(3, 40, 7, 4);
+
+        ctx.restore();
+    }
+
+    function drawGaugeBar(progress) {
+        let barWidth = 260;
+        let barHeight = 16;
+        let startX = (canvas.width - barWidth) / 2;
+        let startY = 375;
+
+        ctx.fillStyle = '#161b22';
+        ctx.fillRect(startX - 2, startY - 2, barWidth + 4, barHeight + 4);
+
+        let gGrad = ctx.createLinearGradient(startX, 0, startX + barWidth, 0);
+        gGrad.addColorStop(0, '#f85149');
+        gGrad.addColorStop(0.7, '#2ea44f');
+        gGrad.addColorStop(1, '#f85149');
+        
+        ctx.fillStyle = gGrad;
+        ctx.fillRect(startX, startY, barWidth, barHeight);
+
+        if (progress > 0 && progress <= 1.0) {
+            let posX = startX + (barWidth * progress);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(posX - 2, startY - 4, 4, barHeight + 8);
+        }
+    }
+
+    function drawScene() {
+        drawStadium();
+
+        let currentProgress = 0;
+
+        if (ball && ball.active) {
+            currentProgress = ball.progress;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(ball.currentX, ball.currentY, ball.size, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#2ea44f';
+            ctx.beginPath();
+            ctx.arc(ball.currentX - 2, ball.currentY - 2, ball.size / 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        } else {
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(240, 318, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.stroke();
+        }
+
+        drawGaugeBar(currentProgress);
+
+        if (feedbackTimer > 0) {
+            ctx.font = '900 26px sans-serif';
+            ctx.fillStyle = feedbackColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(feedbackText, canvas.width / 2, 225);
+            feedbackTimer--;
+        }
+    }
+
+    function spawnBall() {
+        if (!isPlaying) return;
+
+        const side = Math.random() < 0.5 ? 'left' : 'right';
+        const duration = Math.max(1.1, 2.0 - (score * 0.04));
+
+        let startX = 240;
+        let startY = 318;
+        let endX = side === 'left' ? 100 : 380;
+        let endY = 80;
+
+        let willSave = Math.random() < (0.25 + score * 0.001);
+
+        keeperPos = {
+            x: 240,
+            y: 115,
+            targetX: willSave ? endX : 240,
+            isDiving: false,
+            diveSide: side
+        };
+
+        voicedNow = false;
+
+        ball = {
+            startX: startX,
+            startY: startY,
+            endX: endX,
+            endY: endY,
+            currentX: startX,
+            currentY: startY,
+            size: 6,
+            progress: 0,
+            duration: duration,
+            side: side,
+            willSave: willSave,
+            active: true,
+            hit: false,
+            startTime: performance.now()
+        };
+
+        playSoccerSound(side, duration);
+    }
+
+    function gameLoop(timestamp) {
+        if (isPlaying && ball && ball.active) {
+            let elapsed = (timestamp - ball.startTime) / 1000;
+            ball.progress = elapsed / ball.duration;
+
+            if (ball.progress >= 0.65 && !voicedNow) {
+                voicedNow = true;
+                speak("지금 터치하세요!");
+            }
+
+            if (ball.willSave && ball.progress > 0.4) {
+                keeperPos.x += (keeperPos.targetX - keeperPos.x) * 0.16;
+                keeperPos.isDiving = true;
+            }
+
+            if (ball.progress <= 1.0) {
+                ball.currentX = ball.startX + (ball.endX - ball.startX) * ball.progress;
+                ball.currentY = ball.startY + (ball.endY - ball.startY) * ball.progress;
+                ball.size = 6 + (ball.progress * 12);
+            } else if (!ball.hit) {
+                ball.active = false;
+                handleMiss("놓침!");
+            }
+        }
+
+        drawScene();
+
+        if (isPlaying) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function handleTouch(e) {
+        if (e) e.preventDefault();
+        if (!isPlaying || !ball || !ball.active || ball.hit) return;
+
+        ball.hit = true;
+        ball.active = false;
+
+        if (ball.willSave && ball.progress > 0.6) {
+            setFeedback("SAVED BY KEEPER! 🧤 (노 차감)", "#38bdf8");
+            playBooingCrowdSound();
+            updateUI();
+            setTimeout(spawnBall, 1600);
+            return;
+        }
+
+        let diff = Math.abs(0.85 - ball.progress);
+
+        if (diff <= 0.15) {
+            score += 100;
+            setFeedback("GOAL! PERFECT! ⚽", "#2ea44f");
+            playHitEffect();
+            playCheerCrowdSound();
+            setTimeout(spawnBall, 1600);
+        } else if (diff <= 0.32) {
+            score += 50;
+            setFeedback("GOAL! GOOD! 👍", "#e3b341");
+            playHitEffect();
+            playCheerCrowdSound();
+            setTimeout(spawnBall, 1600);
+        } else {
+            handleMiss("타이밍 미스!");
+        }
+
+        updateUI();
+    }
+
+    function handleMiss(reason) {
+        lives--;
+        setFeedback("TIMING MISS! ❌", "#f85149");
+        playBooingCrowdSound();
+        updateUI();
+
+        if (lives <= 0) {
+            gameOver();
+        } else {
+            setTimeout(spawnBall, 1600);
+        }
+    }
+
+    function setFeedback(text, color) {
+        feedbackText = text;
+        feedbackColor = color;
+        feedbackTimer = 45;
+    }
+
+    function updateUI() {
+        document.getElementById('score-val').innerText = score;
+        let hearts = '';
+        for (let i = 0; i < lives; i++) hearts += '❤️';
+        document.getElementById('lives-val').innerText = hearts || '💀';
+    }
+
+    function startGame() {
+        initAudio();
+        isPlaying = true;
+        score = 0;
+        lives = 3;
+        ball = null;
+        keeperPos = { x: 240, y: 115, targetX: 240, isDiving: false, diveSide: 'none' };
+        updateUI();
+
+        document.getElementById('start-btn').style.display = 'none';
+
+        speak("게임 시작! 소리를 듣고 골을 성공시키세요.");
+
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(gameLoop);
+
+        setTimeout(spawnBall, 1800);
+    }
+
+    function gameOver() {
+        isPlaying = false;
+        document.getElementById('start-btn').style.display = 'block';
+        document.getElementById('start-btn').innerText = '🔄 다시 시작';
+        speak("게임 오버. 최종 점수는 " + score + "점입니다.");
+    }
+
+    canvas.addEventListener('touchstart', handleTouch, { passive: false });
+    canvas.addEventListener('mousedown', handleTouch);
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            handleTouch();
+        }
+    });
+
+    drawScene();
+</script>
+</body>
+</html>
+"""
+
+components.html(game_html, height=560)
