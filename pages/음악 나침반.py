@@ -19,8 +19,23 @@ MODELS = [
     "gemini-2.5-flash-lite",
     "gemini-3.5-flash",
 ]
-COUNT = 6           # 비슷한 느낌의 곡 수
+COUNT = 6           # 비슷한 느낌의 곡 수 / 가수의 곡 수
 YT_LOOKUP_MAX = 12  # 공식 음원 영상을 찾아보는 곡 수 (나머지는 유튜브 검색 링크)
+
+# 사용 방법 설명 (정보 아이콘에 마우스를 올리면 보이는 글)
+HOWTO = [
+    ("마이크로 말하기",
+     "마이크 버튼을 눌러 말하고, 끝나면 다시 눌러 주세요. 말한 내용이 내용창에 글로 써지고, 틀린 부분은 고칠 수 있어요."),
+    ("가수",
+     "가수 여러명을 찾을 때 Enter 키로 줄을 나눠 주세요. 첫째 줄에 가수 1 이름, 둘째 줄에 가수 2 이름을 써요."),
+    ("한 줄만 쓸 때",
+     "한 줄만 쓰면 띄어쓰기가 있어도 전체가 노래 제목이에요. 분위기만 써도 돼요."),
+    ("말로 가수와 제목 입력",
+     '"가수 아이유, 제목 좋은날"이라고 말하면 내용창에 두 줄로 나뉘어 써져요. '
+     '"가수", "제목"이라는 말을 쓰지 않으면 한 줄로 써져요.'),
+    ("추천받기",
+     "추천받기 버튼을 누르면 곡 카드가 나와요. 글을 누르면 읽어 주고, 오른쪽 위 스위치로 읽기를 켜고 끌 수 있어요."),
+]
 
 st.set_page_config(page_title="음악 나침반", page_icon="🧭", layout="centered")
 
@@ -53,6 +68,38 @@ st.markdown(
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
+
+    /* 사용 방법 정보 아이콘 (마우스를 올리면 설명이 보입니다) */
+    .infowrap { display: flex; justify-content: center; margin: 0 0 12px 0; }
+    .info {
+        position: relative; display: inline-flex; align-items: center; flex-wrap: wrap;
+        gap: 10px; cursor: help; padding: 4px 10px; border-radius: 999px;
+    }
+    .info .ic {
+        position: relative; display: inline-block; width: 34px; height: 34px; border-radius: 50%;
+        background: #a3a3ab; flex-shrink: 0;
+    }
+    .info .ic::before {
+        content: ""; position: absolute; left: 50%; top: 7px; width: 5px; height: 5px;
+        margin-left: -2.5px; border-radius: 50%; background: #000000;
+    }
+    .info .ic::after {
+        content: ""; position: absolute; left: 50%; top: 15px; width: 5px; height: 12px;
+        margin-left: -2.5px; border-radius: 3px; background: #000000;
+    }
+    .info:hover .ic, .info:focus .ic, .info.open .ic { background: #ffd54a; }
+    .info .lab { font-weight: 800; font-size: 1.05rem; color: #ffffff; }
+    .info .sm { font-size: 0.85rem; color: #b9b9c4; }
+    .info .tip {
+        display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+        margin-top: 10px; width: min(540px, 88vw); background: #15151a; border: 2px solid #ffd54a;
+        border-radius: 14px; padding: 12px 18px; z-index: 1000; text-align: left; cursor: default;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    }
+    .info .tip::before { content: ""; position: absolute; left: 0; right: 0; top: -14px; height: 14px; }
+    .info:hover .tip, .info:focus .tip, .info:focus-within .tip, .info.open .tip { display: block; }
+    .info .tip p { margin: 6px 0; font-size: 0.98rem; line-height: 1.55; color: #ffffff; }
+    .info .tip b { color: #ffd54a; }
 
     .rtitle { font-size: 1.9rem; font-weight: 800; color: #ffffff; }
     .rsum { color: #e6e6ec; font-size: 1rem; margin: 4px 0 6px 0; line-height: 1.45; }
@@ -110,7 +157,6 @@ st.session_state.user_text = st.session_state.user_text
 
 
 # ---------- 소리로 읽어 주기 (글을 누르면 읽어 주는 기능, 기본 켜짐) ----------
-# 화면 전체에서 쓰는 읽기 기능을 페이지에 한 번만 심어 둡니다.
 PARENT_JS = r"""
 (function () {
   if (window.__mcSpeech) return;
@@ -146,22 +192,29 @@ PARENT_JS = r"""
     last = t; lastT = now;
     say(t);
   }
-  /* 글을 누르면 읽어 줍니다 (버튼과 입력칸은 제외) */
+  /* 글을 누르면 읽어 줍니다 (버튼과 입력칸은 제외). 정보 아이콘은 누르면 설명을 열고 닫습니다. */
   document.addEventListener('click', function (e) {
-    if (!on) return;
     var t = e.target;
     if (!t || !t.closest) return;
+    var info = t.closest('.info');
+    var opened = document.querySelectorAll('.info.open');
+    for (var i = 0; i < opened.length; i++) {
+      if (opened[i] !== info) { opened[i].classList.remove('open'); }
+    }
+    if (info) { info.classList.toggle('open'); }
+    if (!on) return;
     if (t.closest('button, a, textarea, input, select, [role="button"], [data-testid="stAudioInput"]')) return;
-    var el = t.closest('[data-testid="stAlert"]') ||
+    var el = info || t.closest('[data-testid="stAlert"]') ||
              t.closest('.rsum, .rtitle, .chip, .sub, .brand, h1, h2, h3, label, li, p');
     if (!el) return;
-    speakOnce(el.innerText || el.textContent);
+    var sp = el.getAttribute ? el.getAttribute('data-speak') : '';
+    speakOnce(sp || el.innerText || el.textContent);
   }, true);
-  /* 버튼이나 입력칸으로 이동하면 기능을 설명해 줍니다 */
+  /* 버튼이나 입력칸이나 정보 아이콘으로 이동하면 기능을 설명해 줍니다 */
   document.addEventListener('focusin', function (e) {
     if (!on) return;
     var t = e.target;
-    if (!t || !t.closest || !t.matches('button, textarea, input, a')) return;
+    if (!t || !t.closest || !t.matches('button, textarea, input, a, .info')) return;
     var txt = '';
     if (t.closest('[data-testid="stAudioInput"]')) {
       txt = '마이크로 말하기 버튼';
@@ -169,6 +222,8 @@ PARENT_JS = r"""
       var box = t.closest('[data-testid="stTextArea"]');
       var lab = box ? box.querySelector('label') : null;
       txt = (lab ? lab.innerText : (t.getAttribute('aria-label') || '')) + '. 글을 쓰는 칸입니다.';
+    } else if (t.classList && t.classList.contains('info')) {
+      txt = t.getAttribute('data-speak') || '사용 방법';
     } else {
       txt = (t.getAttribute('aria-label') || t.innerText || '') + ' 버튼';
     }
@@ -269,6 +324,25 @@ def render_toggle():
     components.html(TOGGLE_HTML.replace("__INSTALL__", install_js()), height=58, scrolling=False)
 
 
+def esc(x) -> str:
+    return htmllib.escape(str(x or ""), quote=True)
+
+
+def info_html() -> str:
+    """사진 속 정보(i) 아이콘. 마우스를 올리거나 누르면 사용 방법이 보입니다."""
+    speak = "사용 방법. " + " ".join(f"{t}. {d}" for t, d in HOWTO)
+    items = "".join(f'<p><b>{esc(t)}</b> {esc(d)}</p>' for t, d in HOWTO)
+    return (
+        '<div class="infowrap">'
+        f'<div class="info" tabindex="0" role="note" aria-label="{esc(speak)}" data-speak="{esc(speak)}">'
+        '<span class="ic" aria-hidden="true"></span>'
+        '<span class="lab">사용 방법</span>'
+        '<span class="sm">마우스를 올리거나 눌러 보세요</span>'
+        f'<div class="tip">{items}</div>'
+        '</div></div>'
+    )
+
+
 # ---------- Gemini ----------
 def get_api_key() -> str:
     try:
@@ -335,9 +409,11 @@ def transcribe(audio_bytes: bytes, mime_type: str = "audio/wav") -> str:
     from google.genai import types
 
     prompt = (
-        "다음 음성을 들리는 그대로 글자로 받아 적어 주세요. "
-        "주로 한국어입니다. 설명이나 따옴표 없이 받아쓴 내용만 출력하세요. "
-        "말소리가 없으면 빈 문자열만 출력하세요."
+        "다음 음성을 들리는 그대로 글자로 받아 적어 주세요. 주로 한국어입니다. "
+        "설명이나 따옴표 없이 받아쓴 내용만 출력하세요. 말소리가 없으면 빈 문자열만 출력하세요.\n"
+        "단, 말하는 사람이 '가수'라고 말한 뒤 이름을, '제목'이라고 말한 뒤 노래 제목을 말했다면 "
+        "'가수', '제목'이라는 말은 빼고 첫째 줄에 가수 이름, 둘째 줄에 노래 제목만 적으세요. "
+        "그렇지 않으면 말한 그대로 한 줄로 적으세요."
     )
     resp = generate([prompt, types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)])
     return (resp.text or "").strip()
@@ -360,30 +436,29 @@ def str_list(v) -> list:
     return [str(x).strip() for x in v if x] if isinstance(v, list) else []
 
 
-def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
-    """가수와 제목으로 쓴 말을 찾아내고, 취향을 분석하고, (가수가 없을 때 쓸) 비슷한 느낌의 곡을 받습니다."""
+def ask_model(artist_line: str, other_text: str, ask_count: int, exclude: list) -> dict:
+    """가수 표기 찾기, 제목인지 판단, 취향 분석, (가수가 없을 때 쓸) 비슷한 느낌의 곡을 받습니다."""
     from google.genai import types
 
     exclude_text = ", ".join(exclude[-50:]) if exclude else "없음"
     prompt = f"""
 당신은 시각 장애인을 위한 친절한 음악 안내자 '음악 나침반'입니다.
-사용자가 말하거나 쓴 내용을 분석해 취향에 맞는 노래를 추천하세요.
+사용자가 입력한 내용을 분석해 취향에 맞는 노래를 추천하세요.
 
-[사용자 입력]
-{user_text}
+[입력]
+가수 줄: {artist_line if artist_line else "없음"}
+내용: {other_text}
 
-[가수 규칙: 매우 중요]
-- 사용자가 특정 가수(또는 그룹) 이름을 말했다면 requested_artists에 그 이름을 한글 표기와 영문 표기 모두 적으세요.
-- requested_display에는 사용자가 말한 가수를 한 명당 하나씩, 가장 널리 쓰는 표기로 적으세요.
-- 가수를 말하지 않았다면 두 목록을 모두 빈 목록으로 두세요.
-- 가수를 말했다면 songs는 빈 목록으로 두세요. (곡은 다른 방법으로 찾습니다.)
+[규칙]
+- 내용의 띄어쓰기는 가수와 제목을 나누는 것이 아닙니다. 가수 이름을 내용에서 추측하지 마세요.
+- 가수 줄이 "없음"이 아니면 사용자가 가수 이름을 직접 입력한 것입니다.
+  artist_aliases에 그 가수의 한글 표기와 영문 표기를 적고(입력한 이름 포함), songs는 빈 목록으로 두세요.
+- second_is_title: 가수 줄이 있을 때 내용이 노래 제목처럼 보이면 true, 분위기나 상황이나 느낌을 설명하는 말이면 false.
+  가수 줄이 없으면 false.
+- 가수 줄이 없으면 artist_aliases는 빈 목록으로 두고, songs에 내용과 어울리는 곡을 쓰세요.
 
-[제목 규칙]
-- title_queries에는 사용자가 노래 제목으로 쓴 것으로 보이는 단어나 문구를, 사용자가 쓴 그대로 적으세요. 가수 이름은 넣지 마세요.
-- 분위기나 상황을 설명하는 긴 문장이면 title_queries는 빈 목록으로 두세요.
-
-[songs 규칙: 가수를 말하지 않았을 때만]
-- 사용자가 단어나 제목만 썼다면, 그 단어와 비슷한 분위기의 곡을 쓰세요. 제목이 같은 곡은 따로 찾으니 쓰지 마세요.
+[songs 규칙: 가수 줄이 없을 때만]
+- 내용이 단어나 제목이면 그 단어와 비슷한 분위기의 곡을 쓰세요. 제목이 같은 곡은 따로 찾으니 쓰지 마세요.
 - 추천 곡 수: {ask_count}곡
 - 이미 나온 곡(중복 금지): {exclude_text}
 - 가수가 직접 발표한 원곡만, 반드시 실제로 발매된 아주 유명한 곡만 쓰세요. 확실하지 않으면 쓰지 마세요.
@@ -394,9 +469,8 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
 
 [출력 형식: 아래 JSON만 출력]
 {{
-  "requested_artists": [],
-  "requested_display": [],
-  "title_queries": [],
+  "artist_aliases": [],
+  "second_is_title": false,
   "analysis": {{
     "summary": "취향을 한두 문장으로 요약",
     "mood": ["분위기 키워드"],
@@ -430,11 +504,11 @@ def ask_model(user_text: str, ask_count: int, exclude: list) -> dict:
     analysis = data.get("analysis")
     if not isinstance(analysis, dict):
         analysis = {}
+    flag = data.get("second_is_title")
     return {
         "analysis": analysis,
-        "requested": str_list(data.get("requested_artists")),
-        "display": str_list(data.get("requested_display")),
-        "titles": str_list(data.get("title_queries")),
+        "aliases": str_list(data.get("artist_aliases")),
+        "second_is_title": flag is True or str(flag).lower() == "true",
         "songs": clean,
     }
 
@@ -590,6 +664,24 @@ def is_bad_track(title: str, album: str) -> bool:
     return bool(BAD_ALBUM_RE.search(album or ""))
 
 
+def detect_store_artist(line: str) -> str:
+    """한 줄 입력이 스토어에 있는 가수 이름과 정확히 같으면 그 이름을 돌려줍니다."""
+    line = (line or "").strip()
+    n = norm_artist(line)
+    if not n or len(line) > 30:
+        return ""
+    for country in ("KR", "US"):
+        try:
+            rows = itunes_search(line, country, entity="musicArtist", limit=5)
+        except Exception:
+            continue
+        for r in rows:
+            an = r.get("artistName", "")
+            if an and norm_artist(an) == n:
+                return an
+    return ""
+
+
 def artist_catalog(requested: list) -> list:
     """가수 이름으로 스토어에서 그 가수의 실제 곡 목록을 가져옵니다."""
     tracks = []
@@ -655,52 +747,35 @@ def artist_catalog(requested: list) -> list:
 # ---------- 입력한 제목과 같은 곡 먼저 찾기 ----------
 STOP_TOKENS = {
     "노래", "노래들", "곡", "곡들", "음악", "추천", "추천해줘", "추천해", "추천해주세요",
-    "들려줘", "틀어줘", "해줘", "주세요", "의", "좀", "같은", "느낌", "스타일",
-    "찾아줘", "알려줘", "듣고", "싶어", "싶어요", "노래좀",
+    "들려줘", "틀어줘", "해줘", "주세요", "좀", "찾아줘", "알려줘", "듣고", "싶어", "싶어요", "노래좀",
 }
 
 
-def build_title_queries(user_text: str, artist_names: list, ai_titles: list) -> list:
-    """사용자가 제목으로 썼을 만한 말을 뽑습니다. (가수 이름은 빼고, 짧은 입력은 그대로 사용)"""
-    raw = (user_text or "").strip()
-    cands = []
-    if 0 < len(raw) <= 40:
-        rest = raw
-        for n in sorted([x for x in artist_names if x], key=len, reverse=True):
-            rest = re.sub(re.escape(n), " ", rest, flags=re.I)
-        tokens = [t for t in re.split(r"\s+", rest) if t and t not in STOP_TOKENS]
-        rest = " ".join(tokens).strip(" .,!?~\"'")
-        if rest:
-            cands.append(rest)
-    cands += ai_titles
-
-    out = []
-    seen = set()
-    for c in cands:
-        c = (c or "").strip()
-        k = norm(c)
-        if not k or k in seen:
-            continue
-        if any(norm(n) == k for n in artist_names if n):
-            continue  # 가수 이름 자체는 제목으로 찾지 않습니다
-        seen.add(k)
-        out.append(c)
-    return out[:3]
+def build_title_queries(raw: str) -> list:
+    """한 줄 입력은 띄어쓰기가 있어도 전체를 제목으로 봅니다. (못 찾으면 군더더기 말을 뺀 것도 시도)"""
+    raw = (raw or "").strip()
+    if not raw or len(raw) > 40:
+        return []
+    out = [raw]
+    tokens = [t for t in re.split(r"\s+", raw) if t and t not in STOP_TOKENS]
+    stripped = " ".join(tokens).strip(" .,!?~\"'")
+    if stripped and norm(stripped) != norm(raw):
+        out.append(stripped)
+    return out
 
 
-def find_exact(queries: list, names: list, ai_norm: set):
+def find_exact(queries: list, restrict: list, want_missing: bool, missing_artist: str):
     """스토어에서 제목이 같은 곡을 개수 제한 없이 모두 찾습니다.
-    못 찾은 '가수+제목'은 missing으로 돌려줍니다."""
-    found = []
-    missing = []
-    seen_keys = set()
+    restrict가 있으면 그 가수의 곡만 인정합니다."""
+    exact_items = []
+    partial_items = []
     for q in queries:
         qn = norm(q)
         if not qn:
             continue
         terms = []
-        if names:
-            terms.append(f"{names[0]} {q}")
+        if restrict:
+            terms.append(f"{restrict[0]} {q}")
         terms.append(q)
         rows = []
         for term in terms:
@@ -710,7 +785,7 @@ def find_exact(queries: list, names: list, ai_norm: set):
                 except Exception:
                     continue
 
-        exact, partial = [], []
+        ex_q, pa_q = [], []
         for r in rows:
             if r.get("kind") != "song":
                 continue
@@ -720,43 +795,45 @@ def find_exact(queries: list, names: list, ai_norm: set):
                 continue
             if is_bad_track(title, r.get("collectionName", "")):
                 continue
-            if names and not same_artist(names, art):
+            if restrict and not same_artist(restrict, art):
                 continue
             tn = norm(title)
             if not tn:
                 continue
             if tn == qn:
-                exact.append((title, art, True))
+                ex_q.append((title, art, q, True))
             elif len(qn) >= 2 and qn in tn:
-                partial.append((title, art, False))
+                pa_q.append((title, art, q, False))
+        if ex_q:
+            exact_items = ex_q
+            break
+        partial_items += pa_q
 
-        # 제목이 같은 곡이 있으면 그 곡을 모두, 없으면 제목에 단어가 들어간 곡을 모두
-        picks = exact if exact else partial
-        added = 0
-        for title, art, is_exact in picks:
-            key = norm(title) + "|" + norm_artist(art)
-            if key in seen_keys:
-                continue  # 같은 가수의 같은 곡이 앨범별로 여러 번 있으면 한 번만
-            seen_keys.add(key)
-            found.append({
-                "title": title, "title_alt": "", "artist": art, "artist_alt": "",
-                "reason": (f"입력하신 {q} 와 제목이 같은 곡입니다." if is_exact
-                           else f"제목에 {q} 가 들어 있는 곡입니다."),
-                "yt": "", "url": "",
-                "tag": "제목이 같은 곡" if is_exact else "제목에 단어 포함",
-                "match": True,
-            })
-            added += 1
+    picks = exact_items if exact_items else partial_items
+    found = []
+    seen_keys = set()
+    for title, art, q, is_exact in picks:
+        key = norm(title) + "|" + norm_artist(art)
+        if key in seen_keys:
+            continue  # 같은 가수의 같은 곡이 앨범별로 여러 번 있으면 한 번만
+        seen_keys.add(key)
+        found.append({
+            "title": title, "title_alt": "", "artist": art, "artist_alt": "",
+            "reason": (f"입력하신 {q} 와 제목이 같은 곡입니다." if is_exact
+                       else f"제목에 {q} 가 들어 있는 곡입니다."),
+            "yt": "", "url": "",
+            "tag": "제목이 같은 곡" if is_exact else "제목에 단어 포함",
+            "match": True,
+        })
 
-        # 가수와 제목을 함께 썼는데 스토어에서 못 찾은 경우: 유튜브 검색으로 연결
-        if names and not added and qn in ai_norm:
-            missing.append({
-                "title": q, "title_alt": "", "artist": names[0], "artist_alt": "",
-                "reason": "음원 목록에서 찾지 못해 유튜브 검색으로 연결합니다.",
-                "yt": "",
-                "url": "https://www.youtube.com/results?search_query=" + quote(f"{names[0]} {q}"),
-                "tag": "입력한 곡 유튜브 검색", "match": False,
-            })
+    missing = []
+    if want_missing and not found and queries:
+        q = queries[0]
+        missing.append({
+            "title": q, "title_alt": "", "artist": missing_artist, "artist_alt": "",
+            "reason": "음원 목록에서 찾지 못해 유튜브에서 찾아 드립니다.",
+            "yt": "", "url": "", "tag": "입력한 곡", "match": True,
+        })
     return found, missing
 
 
@@ -804,6 +881,11 @@ BAD_WORDS = [
     "reaction", "리액션", "sped up", "slowed", "nightcore", "금영", "tj미디어",
 ]
 BAD_REGEX = re.compile(r"(?<![a-z])(m/?r|inst)(?![a-z])")
+NOT_SONG_RE = re.compile(
+    r"vlog|브이로그|메이킹|making|teaser|티저|behind|비하인드|interview|인터뷰|shorts|예고|trailer|paper|"
+    r"playlist|플레이리스트|full album|풀 앨범|1 hour|1시간",
+    re.I,
+)
 
 
 def is_bad_video(video_title: str, song_title: str) -> bool:
@@ -898,7 +980,7 @@ def find_official_youtube(song: dict) -> str:
 
 
 def safe_find(song: dict) -> str:
-    if song.get("url"):
+    if song.get("url") or song.get("yt"):
         return ""
     try:
         return find_official_youtube(song)
@@ -906,47 +988,124 @@ def safe_find(song: dict) -> str:
         return ""
 
 
+def clean_video_title(video_title: str, artist_names: list) -> str:
+    t = htmllib.unescape(video_title or "").strip()
+    t = re.sub(
+        r"[\(\[\{【](?:[^\)\]\}】]*?)(?:official|audio|lyric|lyrics|mv|m/v|video|가사|뮤직비디오|visualizer)"
+        r"(?:[^\)\]\}】]*?)[\)\]\}】]",
+        "", t, flags=re.I,
+    )
+    for n in sorted([x for x in artist_names if x], key=len, reverse=True):
+        t = re.sub(r"^\s*" + re.escape(n) + r"\s*[-–—:|]\s*", "", t, flags=re.I)
+    t = re.sub(r"\s+", " ", t).strip(" -–—|")
+    return t or htmllib.unescape(video_title or "").strip()
+
+
+def artist_youtube_songs(names: list, seen: set, limit: int) -> list:
+    """스토어에 가수가 없을 때: 유튜브에서 그 가수 본인 채널/Topic 채널의 영상을 곡으로 보여 줍니다."""
+    if not names:
+        return []
+    main = names[0]
+    out = []
+    keys = set(seen)
+    for q in (f"{main} topic", f"{main} 노래", f"{main} official audio"):
+        try:
+            items = yt_search(q)
+        except Exception:
+            continue
+        for it in items:
+            vt = htmllib.unescape(it.get("title", "") or "")
+            ch = htmllib.unescape(it.get("channel", "") or "")
+            vid = it.get("id")
+            if not vid or not vt:
+                continue
+            if channel_score(ch, names) == 0:
+                continue
+            if is_bad_video(vt, "") or NOT_SONG_RE.search(vt):
+                continue
+            title = clean_video_title(vt, names)
+            k = norm(title)
+            if not k or k in keys:
+                continue
+            keys.add(k)
+            out.append({
+                "title": title, "title_alt": "", "artist": main, "artist_alt": "",
+                "reason": f"{main}의 공식 영상입니다.",
+                "yt": "https://www.youtube.com/watch?v=" + vid, "url": "", "tag": "", "match": False,
+            })
+            if len(out) >= limit:
+                return out
+    return out
+
+
 # ---------- 추천 ----------
 def recommend(user_text: str, count: int, exclude: list) -> dict:
-    seen = set(norm(x) for x in exclude)
-    data = ask_model(user_text, min(count + 5, 15), exclude)
-    analysis = data["analysis"]
-    requested = data["requested"]
-    display = data["display"]
+    lines = [l.strip() for l in (user_text or "").replace("\r", "\n").split("\n") if l.strip()]
+    if not lines:
+        raise ValueError("먼저 마이크로 말하거나 내용을 입력해 주세요.")
 
-    names = []
-    for n in requested + display:
-        if n and n not in names:
-            names.append(n)
+    seen = set(norm(x) for x in exclude)
+
+    # 가수는 줄바꿈(Enter)으로 나눕니다. 줄이 하나면 띄어쓰기가 있어도 전체를 제목/내용으로 봅니다.
+    artist_line = lines[0] if len(lines) >= 2 else ""
+    other_text = " / ".join(lines[1:]) if artist_line else lines[0]
+
+    data = ask_model(artist_line, other_text, min(count + 5, 15), exclude)
+    analysis = data["analysis"]
+
+    names = []          # 가수 이름 표기들
+    display = []        # 화면에 보여 줄 가수 이름
+    restrict = []       # 제목 찾기를 제한할 가수
+    title_queries = []
+    want_missing = False
+    desc = ""           # 곡을 고를 때 참고할 분위기 설명
+
+    if artist_line:
+        names = [artist_line] + [a for a in data["aliases"] if norm(a) != norm(artist_line)]
+        display = [artist_line]
+        restrict = names
+        if data["second_is_title"]:
+            title_queries = [lines[1]]
+            want_missing = True
+            desc = " ".join(lines[2:])
+        else:
+            desc = " ".join(lines[1:])
+    else:
+        raw = lines[0]
+        title_queries = build_title_queries(raw)
+        store_name = detect_store_artist(raw)
+        if store_name:
+            names = [raw] + ([store_name] if norm(store_name) != norm(raw) else [])
+            display = [store_name]
+        desc = raw
 
     # 1) 입력한 제목과 같은 곡을 먼저, 개수 제한 없이 모두 찾습니다 (처음 추천받을 때만)
     first = []
-    if not exclude:
-        queries = build_title_queries(user_text, names, data["titles"])
-        if queries:
-            ai_norm = set(norm(t) for t in data["titles"])
-            exact, missing = find_exact(queries, names, ai_norm)
-            first = missing + exact
-            for s in first:
-                seen.add(norm(s["title"]))
+    if not exclude and title_queries:
+        found, missing = find_exact(title_queries, restrict, want_missing, artist_line)
+        first = missing + found
+        for s in first:
+            seen.add(norm(s["title"]))
 
-    # 2) 그다음 비슷한 느낌의 곡을 찾습니다
+    # 2) 그다음 가수의 곡 또는 비슷한 느낌의 곡을 찾습니다
     need = count
     vibe = []
-    if requested:
-        cands = [c for c in artist_catalog(requested) if norm(c["title"]) not in seen]
+    if names:
+        cands = [c for c in artist_catalog(names) if norm(c["title"]) not in seen]
         if cands:
-            vibe = pick_from_catalog(user_text, cands, need)
-        elif not first:
-            if exclude:
-                raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
-            name = (display or requested)[0]
-            vibe = [{
-                "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
-                "reason": "음원 목록을 찾지 못해, 유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
-                "yt": "", "url": "https://www.youtube.com/results?search_query=" + quote(name),
-                "tag": "가수 이름으로 검색", "match": False,
-            }]
+            vibe = pick_from_catalog(desc or "가장 유명한 곡", cands, need)
+        else:
+            vibe = artist_youtube_songs(names, seen, need)
+            if not vibe and not first:
+                if exclude:
+                    raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
+                name = display[0]
+                vibe = [{
+                    "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
+                    "reason": "곡 목록을 찾지 못해, 유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
+                    "yt": "", "url": "https://www.youtube.com/results?search_query=" + quote(name),
+                    "tag": "가수 이름으로 검색", "match": False,
+                }]
     else:
         tried = list(exclude)
         checked = 0
@@ -957,7 +1116,7 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
                 if len(vibe) >= need:
                     break
                 try:
-                    cands = ask_model(user_text, min(need - len(vibe) + 5, 15), tried)["songs"]
+                    cands = ask_model("", other_text, min(need - len(vibe) + 5, 15), tried)["songs"]
                 except Exception:
                     break
             if not cands:
@@ -981,23 +1140,20 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
                 raise RuntimeError("곡 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
             raise ValueError("확인된 곡을 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
 
-    final = first + vibe[:max(need, 1)] if vibe else first
+    final = first + vibe[:max(need, 1)]
 
     # 앞쪽 곡만 공식 음원 영상을 찾습니다 (곡이 많으면 느려지기 때문)
     head = final[:YT_LOOKUP_MAX]
     with ThreadPoolExecutor(max_workers=4) as ex:
         urls = list(ex.map(safe_find, head))
     for s, u in zip(head, urls):
-        s["yt"] = u
+        if u:
+            s["yt"] = u
 
     return {"analysis": analysis or {}, "songs": final, "artists": display[:3]}
 
 
 # ---------- 표시용 ----------
-def esc(x) -> str:
-    return htmllib.escape(str(x or ""), quote=True)
-
-
 def youtube_url(song: dict) -> str:
     if song.get("url"):
         return song["url"]
@@ -1214,6 +1370,9 @@ def render_home():
         unsafe_allow_html=True,
     )
 
+    # 사용 방법: 정보 아이콘에 마우스를 올리면 설명이 보입니다
+    st.markdown(info_html(), unsafe_allow_html=True)
+
     if not get_api_key():
         st.warning("GEMINI_API_KEY가 설정되지 않았습니다. 배포 설정의 Secrets에 키를 등록해 주세요.")
     if st.session_state.error:
@@ -1236,7 +1395,7 @@ def render_home():
                     text = transcribe(data, "audio/wav")
                 if text:
                     old = st.session_state.user_text.strip()
-                    st.session_state.user_text = (old + " " + text).strip() if old else text
+                    st.session_state.user_text = (old + "\n" + text).strip() if old else text
                     st.success("말씀하신 내용이 아래 내용창에 써졌습니다. 고칠 수 있어요.")
                 else:
                     st.warning("말소리를 알아듣지 못했습니다. 다시 말씀해 주세요.")
@@ -1244,10 +1403,10 @@ def render_home():
             st.error(friendly_error(e))
 
     st.text_area(
-        "내용 (직접 써도 되고, 마이크로 말하면 여기에 글이 써집니다)",
+        "내용 (가수와 제목은 Enter로 줄을 나눠 주세요)",
         key="user_text",
         height=150,
-        placeholder="예: 아이유 좋은날 / 봄 / 비 오는 날 듣기 좋은 잔잔한 노래",
+        placeholder="첫째 줄: 가수 이름\n둘째 줄: 노래 제목",
     )
 
     st.button("추천받기", type="primary", on_click=set_pending, args=("new",))
