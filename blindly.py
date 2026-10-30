@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 세션 상태 초기화 (입력값 유지용)
+# 세션 상태 초기화 (입력값 및 추천 상태 유지용)
 if "selected_theme" not in st.session_state:
     st.session_state["selected_theme"] = ""
 
@@ -108,11 +108,11 @@ if not api_key:
 try:
     client = genai.Client(api_key=api_key)
 except Exception as e:
-    st.error(f"⚠️ API 초기화 실패: {e}")
+    st.error("⚠️ API 초기화 실패: " + str(e))
     st.stop()
 
 # ---------------------------------------------------------
-# 3. 사이드바 (빠른 키워드 클릭 시 즉시 실행 설정)
+# 3. 사이드바 (키워드 클릭 시 세션에 저장)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
@@ -129,7 +129,7 @@ with st.sidebar:
     ]
     
     for p in presets:
-        if st.button(p, key=f"sidebar_{p}"):
+        if st.button(p, key="btn_" + p):
             st.session_state["selected_theme"] = p
 
 # ---------------------------------------------------------
@@ -147,41 +147,40 @@ user_input = st.text_input(
     key="custom_query"
 )
 
-# 현재 선택된 테마 결정
 final_query = user_input.strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 if final_query:
-    st.info(f"선택된 테마: **{final_query}**")
+    st.info("선택된 테마: " + final_query)
 
 btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
 
 # ---------------------------------------------------------
 # 5. AI 추천 실행 로직
 # ---------------------------------------------------------
-if btn_clicked or (final_query and st.session_state.get("selected_theme") == final_query):
+if btn_clicked:
     if not final_query:
         st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
     else:
         with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
-            prompt = f"""당신은 음악 큐레이터입니다.
-요청 테마: "{final_query}"
+            prompt = """당신은 음악 큐레이터입니다.
+요청 테마: """ + final_query + """
 
 위 테마에 딱 맞는 노래 3곡을 추천해 주세요.
-반드시 아래와 같은 형태의 순수 JSON 텍스트로만 응답하세요. 백틱(```)이나 추가 설명은 넣지 마세요.
+반드시 아래와 같은 형태의 순수 JSON 텍스트로만 응답하세요. 마크다운 백틱(```)이나 설명글은 전부 제외하세요.
 
-{{
+{
     "summary": "추천 배경 한 줄 메시지",
     "songs": [
-        {{
+        {
             "title": "곡 제목",
             "artist": "가수명",
             "genre": "장르",
             "reason": "추천 이유 및 음악적 포인트"
-        }}
+        }
     ]
-}}"""
+}"""
 
             try:
                 response = client.models.generate_content(
@@ -192,7 +191,7 @@ if btn_clicked or (final_query and st.session_state.get("selected_theme") == fin
                 raw_text = response.text if hasattr(response, 'text') else ""
                 res_text = raw_text.strip()
                 
-                # 마크다운 백틱 가공
+                # 안전한 JSON 정형화 처리
                 if res_text.startswith("```"):
                     lines = res_text.splitlines()
                     if lines[0].startswith("```"):
@@ -204,16 +203,34 @@ if btn_clicked or (final_query and st.session_state.get("selected_theme") == fin
                 data = json.loads(res_text)
 
                 st.markdown("---")
-                st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
+                st.markdown("### 💬 Curator's Note\n> " + str(data.get("summary", "")))
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.subheader("🎧 Top Recommended Tracks")
 
                 for idx, song in enumerate(data.get("songs", []), start=1):
-                    title = song.get("title", "제목 없음")
-                    artist = song.get("artist", "가수 미상")
-                    genre = song.get("genre", "장르 미상")
-                    reason = song.get("reason", "추천 내용")
+                    title = str(song.get("title", "제목 없음"))
+                    artist = str(song.get("artist", "가수 미상"))
+                    genre = str(song.get("genre", "장르 미상"))
+                    reason = str(song.get("reason", "추천 내용"))
 
                     clean_title = title.replace(' ', '+')
                     clean_artist = artist.replace(' ', '+')
-                    youtube_link = f"
+                    youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
+
+                    # f-string 구문 오류를 완전히 방지하는 단순 문자열 결합
+                    card_html = (
+                        '<div class="spotify-card">'
+                        '<div class="song-title">#' + str(idx) + '. ' + title + '</div>'
+                        '<div class="artist-name">🎤 ' + artist + ' &nbsp;|&nbsp; 🏷️ ' + genre + '</div>'
+                        '<div class="reason-text">💡 ' + reason + '</div>'
+                        '<br>'
+                        '<a href="' + youtube_link + '" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
+                        '</div>'
+                    )
+                    st.markdown(card_html, unsafe_allow_html=True)
+
+            except json.JSONDecodeError:
+                st.warning("AI 응답 파싱 중 차이가 있었습니다. 결과 텍스트:")
+                st.write(raw_text)
+            except Exception as e:
+                st.error("오류가 발생했습니다: " + str(e))
