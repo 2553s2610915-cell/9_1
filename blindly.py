@@ -167,4 +167,53 @@ if st.button("▶ 추천 음악 불러오기", type="primary"):
                     contents=prompt
                 )
                 
-                res_text = response.
+                # 안전한 변수 처리 (줄바꿈 오류 방지)
+                raw_text = response.text if hasattr(response, 'text') else ""
+                res_text = raw_text.strip()
+                
+                if res_text.startswith("```json"):
+                    res_text = res_text[7:]
+                if res_text.startswith("```"):
+                    res_text = res_text[3:]
+                if res_text.endswith("```"):
+                    res_text = res_text[:-3]
+
+                data = json.loads(res_text.strip())
+
+                st.markdown("---")
+                st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.subheader("🎧 Top Recommended Tracks")
+
+                for idx, song in enumerate(data.get("songs", []), start=1):
+                    title = song.get("title", "제목 없음")
+                    artist = song.get("artist", "가수 미상")
+                    genre = song.get("genre", "장르 미상")
+                    reason = song.get("reason", "추천 내용")
+
+                    clean_title = title.replace(' ', '+')
+                    clean_artist = artist.replace(' ', '+')
+                    youtube_link = f"https://www.youtube.com/results?search_query={clean_title}+{clean_artist}"
+
+                    st.markdown(f"""
+                        <div class="spotify-card">
+                            <div class="song-title">#{idx}. {title}</div>
+                            <div class="artist-name">🎤 {artist} &nbsp;|&nbsp; 🏷️ {genre}</div>
+                            <div class="reason-text">💡 {reason}</div>
+                            <br>
+                            <a href="{youtube_link}" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+            except json.JSONDecodeError:
+                st.warning("추천 결과:")
+                st.write(response.text if hasattr(response, 'text') else response)
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+# ---------------------------------------------------------
+# 5. 하단 고정 스포티파이 스타일 안내
+# ---------------------------------------------------------
+st.markdown("<br><br>---", unsafe_allow_html=True)
+st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
