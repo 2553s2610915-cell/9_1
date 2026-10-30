@@ -19,7 +19,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-game_html = r"""
+game_html = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -195,8 +195,8 @@ game_html = r"""
 <body>
 
 <div class="valo-navbar">
-    <div class="valo-logo">🦑 SQUID GAME AUDIO SOCCER</div>
-    <button id="bgm-toggle-btn" onclick="toggleBGM()">🎵 Royal 44 BGM: ON</button>
+    <div class="valo-logo">SQUID GAME AUDIO SOCCER</div>
+    <button id="bgm-toggle-btn" onclick="toggleBGM()">Royal 44 BGM: ON</button>
 </div>
 
 <div id="lobby-container">
@@ -223,7 +223,7 @@ game_html = r"""
     </div>
 
     <canvas id="gameCanvas" width="480" height="410"></canvas>
-    <button id="back-to-lobby-btn" onclick="returnToLobby()">🔙 로비로 돌아가기</button>
+    <button id="back-to-lobby-btn" onclick="returnToLobby()">로비로 돌아가기</button>
 </div>
 
 <script>
@@ -309,10 +309,10 @@ game_html = r"""
         isBgmOn = !isBgmOn;
         const btn = document.getElementById('bgm-toggle-btn');
         if (isBgmOn) {
-            btn.innerText = "🎵 Royal 44 BGM: ON";
+            btn.innerText = "Royal 44 BGM: ON";
             startRoyal44BGM();
         } else {
-            btn.innerText = "🔇 Royal 44 BGM: OFF";
+            btn.innerText = "Royal 44 BGM: OFF";
             if (bgmInterval) clearInterval(bgmInterval);
         }
     }
@@ -405,12 +405,10 @@ game_html = r"""
         osc2.stop(audioCtx.currentTime + 1.2);
     }
 
-    // 경기장 비주얼
     function drawStadium() {
         ctx.fillStyle = '#1e1c2a';
         ctx.fillRect(0, 0, canvas.width, 160);
 
-        // 관중석
         const colors = ['#e91e63', '#ff9800', '#2196f3', '#4caf50', '#ffffff'];
         for (let i = 0; i < 220; i++) {
             let rx = (i * 13) % canvas.width;
@@ -424,9 +422,8 @@ game_html = r"""
         ctx.fillStyle = '#ff4655';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('SQUID GAME • 500PTS SPEED UP 🦑', canvas.width / 2, 112);
+        ctx.fillText('SQUID GAME • 500PTS SPEED UP', canvas.width / 2, 112);
 
-        // 골대
         ctx.strokeStyle = '#f5f5f5';
         ctx.lineWidth = 5;
         ctx.strokeRect(40, 35, 400, 110);
@@ -454,4 +451,251 @@ game_html = r"""
         drawPinkGuardKicker();
     }
 
-    // 1. 골키퍼: 오징어 게임
+    function drawYoungheeKeeper() {
+        let x = keeperPos.x;
+        let y = keeperPos.y;
+
+        ctx.save();
+        ctx.translate(x, y);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(0, 32, 16, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffe0bd';
+        ctx.beginPath();
+        ctx.arc(0, -26, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.arc(0, -30, 12, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(-13, -24, 5, 0, Math.PI * 2);
+        ctx.arc(13, -24, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(-4, -26, 2, 0, Math.PI * 2);
+        ctx.arc(4, -26, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ff8a80';
+        ctx.beginPath();
+        ctx.arc(-7, -22, 2.5, 0, Math.PI * 2);
+        ctx.arc(7, -22, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffeb3b';
+        ctx.fillRect(-8, -14, 16, 10);
+
+        ctx.fillStyle = '#ff6f00';
+        ctx.beginPath();
+        ctx.moveTo(-8, -8);
+        ctx.lineTo(8, -8);
+        ctx.lineTo(12, 14);
+        ctx.lineTo(-12, 14);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-7, 14, 5, 12);
+        ctx.fillRect(2, 14, 5, 12);
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-8, 26, 7, 5);
+        ctx.fillRect(1, 26, 7, 5);
+
+        ctx.restore();
+    }
+
+    function drawPinkGuardKicker() {
+        ctx.save();
+        ctx.translate(330, 320);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(0, 42, 16, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#e91e63';
+        ctx.beginPath();
+        ctx.arc(0, -8, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(0, -8, 11, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -8, 5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#e91e63';
+        ctx.fillRect(-12, 6, 24, 28);
+
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 6);
+        ctx.lineTo(0, 34);
+        ctx.stroke();
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-14, 18, 5, 10);
+        ctx.fillRect(9, 18, 5, 10);
+
+        ctx.fillRect(-10, 34, 8, 8);
+        ctx.fillRect(2, 34, 8, 8);
+
+        ctx.restore();
+    }
+
+    function drawSoccerBall(x, y, radius) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let i = 0; i < 5; i++) {
+            let angle = (i * 72) * Math.PI / 180;
+            let px = Math.cos(angle) * (radius * 0.7);
+            let py = Math.sin(angle) * (radius * 0.7);
+
+            ctx.beginPath();
+            ctx.arc(px, py, radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+
+    function drawGaugeBar(progress) {
+        let barWidth = 260;
+        let barHeight = 16;
+        let startX = (canvas.width - barWidth) / 2;
+        let startY = 375;
+
+        ctx.fillStyle = '#161b22';
+        ctx.fillRect(startX - 2, startY - 2, barWidth + 4, barHeight + 4);
+
+        let gGrad = ctx.createLinearGradient(startX, 0, startX + barWidth, 0);
+        gGrad.addColorStop(0, '#ff4655');
+        gGrad.addColorStop(0.7, '#00f2fe');
+        gGrad.addColorStop(1, '#ff4655');
+        
+        ctx.fillStyle = gGrad;
+        ctx.fillRect(startX, startY, barWidth, barHeight);
+
+        if (progress > 0 && progress <= 1.0) {
+            let posX = startX + (barWidth * progress);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(posX - 2, startY - 4, 4, barHeight + 8);
+        }
+    }
+
+    function drawScene() {
+        drawStadium();
+
+        let currentProgress = 0;
+
+        if (ball && ball.active) {
+            currentProgress = ball.progress;
+            drawSoccerBall(ball.currentX, ball.currentY, ball.size);
+        } else {
+            drawSoccerBall(240, 318, 7);
+        }
+
+        drawGaugeBar(currentProgress);
+
+        if (feedbackTimer > 0) {
+            ctx.font = '900 24px sans-serif';
+            ctx.fillStyle = feedbackColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(feedbackText, canvas.width / 2, 225);
+            feedbackTimer--;
+        }
+    }
+
+    function spawnBall() {
+        if (!isPlaying) return;
+
+        const side = Math.random() < 0.5 ? 'left' : 'right';
+
+        let speedLevel = Math.floor(score / 500);
+        let baseDuration = 2.0 - (speedLevel * 0.25);
+        const duration = Math.max(0.7, baseDuration);
+
+        let startX = 240;
+        let startY = 318;
+        let endX = side === 'left' ? 100 : 380;
+        let endY = 80;
+
+        let willSave = Math.random() < (0.2 + speedLevel * 0.05);
+
+        keeperPos = {
+            x: 240,
+            y: 110,
+            targetX: willSave ? endX : 240,
+            isDiving: false,
+            diveSide: side
+        };
+
+        voicedNow = false;
+
+        ball = {
+            startX: startX,
+            startY: startY,
+            endX: endX,
+            endY: endY,
+            currentX: startX,
+            currentY: startY,
+            size: 7,
+            progress: 0,
+            duration: duration,
+            side: side,
+            willSave: willSave,
+            active: true,
+            hit: false,
+            startTime: performance.now()
+        };
+
+        playSoccerSound(side, duration);
+    }
+
+    function gameLoop(timestamp) {
+        if (isPlaying && ball && ball.active) {
+            let elapsed = (timestamp - ball.startTime) / 1000;
+            ball.progress = elapsed / ball.duration;
+
+            if (ball.progress >= 0.65 && !voicedNow) {
+                voicedNow = true;
+                speak("지금 터치하세요!");
+            }
+
+            if (ball.willSave && ball.progress > 0.4) {
+                keeperPos.x += (keeperPos.targetX - keeperPos.x) * 0.16;
+                keeperPos.isDiving = true;
+            }
+
+            if (ball.progress <= 1.0) {
+                ball.currentX = ball.startX + (ball.endX - ball.startX) * ball.progress;
+                ball.currentY = ball.startY + (ball.endY - ball.startY) * ball.progress;
+                ball.size =
