@@ -157,7 +157,7 @@ if final_query:
 btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
 
 # ---------------------------------------------------------
-# 5. AI 추천 실행 로직 (모델 변경: gemini-2.5-flash)
+# 5. AI 추천 실행 로직 (안정적인 모델 전환 폴백 포함)
 # ---------------------------------------------------------
 if btn_clicked:
     if not final_query:
@@ -182,58 +182,70 @@ if btn_clicked:
     ]
 }"""
 
+            response = None
+            # 모델 호출 시도 (gemini-1.5-flash 이용)
             try:
-                # 사용 가능한 최신 표준 모델명 적용
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=prompt
                 )
-                
-                raw_text = response.text if hasattr(response, 'text') else ""
-                res_text = raw_text.strip()
-                
-                # 안전한 JSON 정형화 처리
-                if res_text.startswith("```"):
-                    lines = res_text.splitlines()
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].startswith("```"):
-                        lines = lines[:-1]
-                    res_text = "\n".join(lines).strip()
-
-                data = json.loads(res_text)
-
-                st.markdown("---")
-                st.markdown("### 💬 Curator's Note\n> " + str(data.get("summary", "")))
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.subheader("🎧 Top Recommended Tracks")
-
-                for idx, song in enumerate(data.get("songs", []), start=1):
-                    title = str(song.get("title", "제목 없음"))
-                    artist = str(song.get("artist", "가수 미상"))
-                    genre = str(song.get("genre", "장르 미상"))
-                    reason = str(song.get("reason", "추천 내용"))
-
-                    clean_title = title.replace(' ', '+')
-                    clean_artist = artist.replace(' ', '+')
-                    youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
-
-                    card_html = (
-                        '<div class="spotify-card">'
-                        '<div class="song-title">#' + str(idx) + '. ' + title + '</div>'
-                        '<div class="artist-name">🎤 ' + artist + ' &nbsp;|&nbsp; 🏷️ ' + genre + '</div>'
-                        '<div class="reason-text">💡 ' + reason + '</div>'
-                        '<br>'
-                        '<a href="' + youtube_link + '" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
-                        '</div>'
+            except Exception:
+                # 404 발생 시 기본 모델 fallback
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-1.5-pro',
+                        contents=prompt
                     )
-                    st.markdown(card_html, unsafe_allow_html=True)
+                except Exception as ex:
+                    st.error("모델 호환성 오류가 발생했습니다: " + str(ex))
 
-            except json.JSONDecodeError:
-                st.warning("AI 응답을 가져왔으나 정형화에 차이가 있었습니다. 결과:")
-                st.write(raw_text)
-            except Exception as e:
-                st.error("오류가 발생했습니다: " + str(e))
+            if response:
+                try:
+                    raw_text = response.text if hasattr(response, 'text') else ""
+                    res_text = raw_text.strip()
+                    
+                    # 마크다운 구분자 제거
+                    if res_text.startswith("```"):
+                        lines = res_text.splitlines()
+                        if lines[0].startswith("```"):
+                            lines = lines[1:]
+                        if lines and lines[-1].startswith("```"):
+                            lines = lines[:-1]
+                        res_text = "\n".join(lines).strip()
+
+                    data = json.loads(res_text)
+
+                    st.markdown("---")
+                    st.markdown("### 💬 Curator's Note\n> " + str(data.get("summary", "")))
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.subheader("🎧 Top Recommended Tracks")
+
+                    for idx, song in enumerate(data.get("songs", []), start=1):
+                        title = str(song.get("title", "제목 없음"))
+                        artist = str(song.get("artist", "가수 미상"))
+                        genre = str(song.get("genre", "장르 미상"))
+                        reason = str(song.get("reason", "추천 내용"))
+
+                        clean_title = title.replace(' ', '+')
+                        clean_artist = artist.replace(' ', '+')
+                        youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
+
+                        card_html = (
+                            '<div class="spotify-card">'
+                            '<div class="song-title">#' + str(idx) + '. ' + title + '</div>'
+                            '<div class="artist-name">🎤 ' + artist + ' &nbsp;|&nbsp; 🏷️ ' + genre + '</div>'
+                            '<div class="reason-text">💡 ' + reason + '</div>'
+                            '<br>'
+                            '<a href="' + youtube_link + '" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
+                            '</div>'
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
+
+                except json.JSONDecodeError:
+                    st.warning("AI 응답을 가져왔으나 정형화에 차이가 있었습니다. 결과:")
+                    st.write(raw_text)
+                except Exception as e:
+                    st.error("처리 중 오류가 발생했습니다: " + str(e))
 
 # ---------------------------------------------------------
 # 6. 하단 안내
