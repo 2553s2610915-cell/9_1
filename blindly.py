@@ -14,7 +14,6 @@ st.set_page_config(
 # 시각 장애인 및 저시력자를 위한 가독성 향상 CSS
 st.markdown("""
     <style>
-    /* 전체 글자 크기 확대 및 명암 대비 강화 */
     html, body, [class*="css"] {
         font-size: 1.15rem !important;
         font-family: 'Malgun Gothic', sans-serif;
@@ -48,7 +47,7 @@ st.markdown("""
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 
 if not api_key:
-    st.error("⚠️ Secrets 설정에서 GEMINI_API_KEY를 찾을 수 없습니다. [Secrets 설정 방법]을 참고해 주세요.")
+    st.error("⚠️ Secrets 설정에서 GEMINI_API_KEY를 찾을 수 없습니다. Secrets 설정 방법을 참고해 주세요.")
     st.stop()
 
 try:
@@ -67,13 +66,12 @@ st.write("원하는 기분, 장르, 상황을 입력하거나 아래 키워드�
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 4. 입력 섹션 (키워드 버튼 선택 OR 직접 입력)
+# 4. 입력 섹션
 # ---------------------------------------------------------
 st.subheader("1. 추천 방식 선택하기")
 
 col1, col2 = st.columns([1, 1])
 
-# 빠른 태그 선택용 키워드 목록
 preset_keywords = [
     "🌧️ 비 오는 날 듣기 좋은 아늑한 노래",
     "☕ 카페에서 공부할 때 듣는 편안한 음악",
@@ -93,4 +91,10 @@ with col1:
 with col2:
     st.markdown("**[방법 B] 자유롭게 직접 입력**")
     user_input = st.text_input(
-        label="원하는 분위기,
+        label="원하는 분위기, 가사, 가수, 느낌 등을 적어주세요:",
+        placeholder="예: 따뜻한 차 한 잔 마시며 듣기 좋은 90년대 밴드 음악",
+        key="custom_input"
+    )
+
+# 입력값 확정 (직접 입력 우대)
+final_query = user_input.strip()
