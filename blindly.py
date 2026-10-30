@@ -216,7 +216,26 @@ if st.button("▶ 추천 음악 불러오기", type="primary"):
                     clean_artist = artist.replace(' ', '+')
                     youtube_link = f"https://www.youtube.com/results?search_query={clean_title}+{clean_artist}"
 
-                    st.markdown(f"""
-                        <div class="spotify-card">
-                            <div class="song-title">#{idx}. {title}</div>
-                            <div class="artist-name">🎤 {artist} &nbsp;|&nbsp; 🏷️ {genre}</div>
+                    # 멀티라인 f-string 파싱 에러 방지를 위해 안전하게 HTML 작성
+                    card_html = (
+                        '<div class="spotify-card">'
+                        f'<div class="song-title">#{idx}. {title}</div>'
+                        f'<div class="artist-name">🎤 {artist} &nbsp;|&nbsp; 🏷️ {genre}</div>'
+                        f'<div class="reason-text">💡 {reason}</div>'
+                        '<br>'
+                        f'<a href="{youtube_link}" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
+                        '</div>'
+                    )
+                    st.markdown(card_html, unsafe_allow_html=True)
+
+            except json.JSONDecodeError:
+                st.warning("추천 결과:")
+                st.write(response.text if hasattr(response, 'text') else response)
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+# ---------------------------------------------------------
+# 5. 하단 고정 스포티파이 스타일 안내
+# ---------------------------------------------------------
+st.markdown("<br><br>---", unsafe_allow_html=True)
+st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
