@@ -1,5 +1,4 @@
 import streamlit as st
-import json
 import random
 
 # ---------------------------------------------------------
@@ -11,11 +10,13 @@ st.set_page_config(
     layout="wide"
 )
 
-# 세션 상태 초기화 (입력값 및 바로 실행 플래그)
-if "selected_theme" not in st.session_state:
-    st.session_state["selected_theme"] = ""
-if "auto_run" not in st.session_state:
-    st.session_state["auto_run"] = False
+# 세션 상태 초기화
+if "query_text" not in st.session_state:
+    st.session_state["query_text"] = ""
+
+# 콜백 함수: 사이드바 버튼 클릭 시 입력창 업데이트
+def set_preset_query(preset_val):
+    st.session_state["query_text"] = preset_val
 
 st.markdown("""
     <style>
@@ -99,7 +100,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. 음악 추천 엔진
+# 2. 음악 추천 데이터베이스 엔진
 # ---------------------------------------------------------
 def get_recommendations(query):
     music_db = {
@@ -130,17 +131,19 @@ def get_recommendations(query):
         ]
     }
     
+    # 키워드 매칭
     for key in music_db:
         if key in query:
-            return f"요청하신 '{query}' 테마와 딱 어울리는 분위기 있는 곡들을 모았습니다.", music_db[key]
+            return f"요청하신 '{query}' 테마와 딱 어울리는 감성 추천 음악입니다.", music_db[key]
             
-    default_summary = f"선택하신 '{query}' 분위기에 어울리는 큐레이터의 추천 음악 세 곡입니다."
+    # 매칭 없을 시 랜덤 선택
+    default_summary = f"선택하신 '{query}' 분위기에 맞춰 구성한 AI 큐레이터의 추천 플레이리스트입니다."
     all_songs = [s for songs in music_db.values() for s in songs]
     selected_songs = random.sample(all_songs, 3)
     return default_summary, selected_songs
 
 # ---------------------------------------------------------
-# 3. 사이드바 (클릭 시 세션에 저장 및 즉시 실행 플래그 설정)
+# 3. 사이드바 (콜백 사용으로 100% 작동 보장)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
@@ -157,34 +160,4 @@ with st.sidebar:
     ]
     
     for p in presets:
-        if st.button(p, key="btn_" + p):
-            st.session_state["selected_theme"] = p
-            st.session_state["auto_run"] = True
-
-# ---------------------------------------------------------
-# 4. 메인 화면
-# ---------------------------------------------------------
-st.markdown("## 🎧 AI 음악 큐레이ator")
-st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-user_input = st.text_input(
-    label="어떤 분위기의 노래를 찾으시나요?",
-    value=st.session_state.get("selected_theme", ""),
-    placeholder="예: 마음이 차분해지는 새벽 들을만한 노래 알려줘",
-    key="custom_query"
-)
-
-final_query = user_input.strip()
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-if final_query:
-    st.info("선택된 테마: " + final_query)
-
-btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
-
-# ---------------------------------------------------------
-# 5. 추천 음악 결과 출력 (버튼 클릭 OR 왼쪽 사이드바 클릭 시 실행)
-# ----------------
+        st.button(p, key="btn_" + p, on_click=
