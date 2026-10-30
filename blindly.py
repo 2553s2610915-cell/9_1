@@ -1,5 +1,5 @@
 import streamlit as st
-from duckduckgo_search import DDGS
+import urllib.request
 import json
 
 # ---------------------------------------------------------
@@ -96,7 +96,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. 사이드바 (빠른 키워드 버튼)
+# 2. Gemini REST API 직접 호출 함수
+# ---------------------------------------------------------
+def call_gemini_api(api_key, user_prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": user_prompt}]
+        }]
+    }
+    
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers)
+    
+    with urllib.request.urlopen(req) as response:
+        result = json.loads(response.read().decode("utf-8"))
+        return result['candidates'][0]['content']['parts'][0]['text']
+
+# ---------------------------------------------------------
+# 3. 사이드바
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
@@ -117,7 +137,7 @@ with st.sidebar:
             st.session_state["selected_theme"] = p
 
 # ---------------------------------------------------------
-# 3. 메인 화면
+# 4. 메인 화면
 # ---------------------------------------------------------
 st.markdown("## 🎧 AI 음악 큐레이터")
 st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
@@ -141,48 +161,48 @@ if final_query:
 btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
 
 # ---------------------------------------------------------
-# 4. DuckDuckGo AI 봇 추천 로직 (API 키 없음)
+# 5. 추천 실행 로직
 # ---------------------------------------------------------
+api_key = st.secrets.get("GEMINI_API_KEY", None)
+
 if btn_clicked:
-    if not final_query:
+    if not api_key:
+        st.error("⚠️ Secrets 설정에서 GEMINI_API_KEY를 설정해 주세요.")
+    elif not final_query:
         st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
     else:
         with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
             prompt = """당신은 음악 큐레이터입니다.
 요청 테마: """ + final_query + """
 
-위 테마에 어울리는 대표 노래 3곡을 추천해 주세요.
-반드시 아래와 같은 JSON 형식을 엄격히 준수하여 응답하세요. 다른 부연 설명이나 인사말, 마크다운 백틱은 출력하지 마세요.
+위 테마에 딱 맞는 대표 노래 3곡을 추천해 주세요.
+반드시 아래 JSON 형태 그대로 응답하세요. 다른 부연 설명이나 마크다운 백틱(```)은 제외하세요.
 
 {
-    "summary": "추천 테마에 대한 친절한 한 줄 큐레이션 서두",
+    "summary": "추천 배경 한 줄 메시지",
     "songs": [
         {
             "title": "곡 제목",
-            "artist": "가수 이름",
+            "artist": "가수명",
             "genre": "장르",
-            "reason": "추천하는 이유 및 음악적 감상 설명"
+            "reason": "추천 이유 및 감상 포인트"
         }
     ]
 }"""
 
             try:
-                # API 키 없이 무료 지원되는 DDG AI 호출
-                ddgs = DDGS()
-                results = ddgs.chat(prompt, model='gpt-4o-mini')
+                raw_text = call_gemini_api(api_key, prompt).strip()
                 
-                res_text = results.strip() if results else ""
-                
-                # 마크다운 구분자 제거
-                if res_text.startswith("```"):
-                    lines = res_text.splitlines()
+                # 마크다운 백틱 제거
+                if raw_text.startswith("```"):
+                    lines = raw_text.splitlines()
                     if lines[0].startswith("```"):
                         lines = lines[1:]
                     if lines and lines[-1].startswith("```"):
                         lines = lines[:-1]
-                    res_text = "\n".join(lines).strip()
+                    raw_text = "\n".join(lines).strip()
 
-                data = json.loads(res_text)
+                data = json.loads(raw_text)
 
                 st.markdown("---")
                 st.markdown("### 💬 Curator's Note\n> " + str(data.get("summary", "")))
@@ -197,7 +217,7 @@ if btn_clicked:
 
                     clean_title = title.replace(' ', '+')
                     clean_artist = artist.replace(' ', '+')
-                    youtube_link = "[https://www.youtube.com/results?search_query=](https://www.youtube.com/results?search_query=)" + clean_title + "+" + clean_artist
+                    youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
 
                     card_html = (
                         '<div class="spotify-card">'
@@ -211,13 +231,13 @@ if btn_clicked:
                     st.markdown(card_html, unsafe_allow_html=True)
 
             except json.JSONDecodeError:
-                st.warning("추천 음악 결과입니다:")
-                st.write(results if 'results' in locals() else "결과를 불러올 수 없습니다.")
+                st.warning("추천 음악 결과:")
+                st.write(raw_text if 'raw_text' in locals() else "결과를 불러올 수 없습니다.")
             except Exception as e:
                 st.error("오류가 발생했습니다: " + str(e))
 
 # ---------------------------------------------------------
-# 5. 하단 안내
+# 6. 하단 안내
 # ---------------------------------------------------------
 st.markdown("<br><br>---", unsafe_allow_html=True)
 st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
