@@ -131,33 +131,8 @@ def get_recommendations(query):
         ]
     }
     
-    # 키워드 매칭
     for key in music_db:
         if key in query:
-            return f"요청하신 '{query}' 테마와 딱 어울리는 감성 추천 음악입니다.", music_db[key]
+            return "요청하신 '" + query + "' 테마와 딱 어울리는 감성 추천 음악입니다.", music_db[key]
             
-    # 매칭 없을 시 랜덤 선택
-    default_summary = f"선택하신 '{query}' 분위기에 맞춰 구성한 AI 큐레이터의 추천 플레이리스트입니다."
-    all_songs = [s for songs in music_db.values() for s in songs]
-    selected_songs = random.sample(all_songs, 3)
-    return default_summary, selected_songs
-
-# ---------------------------------------------------------
-# 3. 사이드바 (콜백 사용으로 100% 작동 보장)
-# ---------------------------------------------------------
-with st.sidebar:
-    st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-subtitle">시각 장애인 및 음성 사용자 전용 추천</div>', unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown("### 📚 빠른 키워드 선택")
-    
-    presets = [
-        "🌧️ 비 오는 날 감성 발라드",
-        "☕ 카페 느낌의 편안한 재즈",
-        "🏃‍♂️ 드라이브용 신나는 K-POP",
-        "🌙 수면 유도 조용한 뉴에이지",
-        "🎸 90년대 따뜻한 록 밴드"
-    ]
-    
-    for p in presets:
-        st.button(p, key="btn_" + p, on_click=
+    default_summary = "선택하신 '" + query + "' 분위기에 맞춰 구성한 추천 플레이리스트입니다."
