@@ -11,23 +11,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# 스포티파이 느낌의 다크 패널 UI 스타일링 & 사이드바 텍스트 흰색 강조
+# 세션 상태 초기화 (입력값 유지용)
+if "selected_theme" not in st.session_state:
+    st.session_state["selected_theme"] = ""
+
 st.markdown("""
     <style>
-    /* 전체 배경색 - 딥 다크 메인 테마 */
     .stApp {
         background-color: #121212 !important;
         color: #FFFFFF !important;
         font-family: 'Malgun Gothic', sans-serif;
     }
     
-    /* 사이드바 스타일링 및 좌상단 텍스트 흰색 처리 */
     [data-testid="stSidebar"] {
         background-color: #000000 !important;
         padding-top: 1rem;
     }
     
-    /* 사이드바 내부의 모든 헤더 및 글자색을 선명한 흰색으로 변경 */
     [data-testid="stSidebar"] h1, 
     [data-testid="stSidebar"] h2, 
     [data-testid="stSidebar"] h3, 
@@ -50,7 +50,6 @@ st.markdown("""
         margin-bottom: 15px;
     }
 
-    /* 메인 영역 카드리스트 패널 */
     .spotify-card {
         background-color: #181818;
         border-radius: 8px;
@@ -59,7 +58,6 @@ st.markdown("""
         border: 1px solid #282828;
     }
     
-    /* 타이틀 및 네온 강조 텍스트 */
     .song-title {
         color: #1DB954;
         font-size: 1.3rem;
@@ -77,7 +75,6 @@ st.markdown("""
         line-height: 1.5;
     }
     
-    /* 스포티파이 시그니처 그리너리 버튼 스타일 */
     .stButton > button {
         background-color: #1DB954 !important;
         color: #000000 !important;
@@ -90,7 +87,6 @@ st.markdown("""
         margin-bottom: 6px;
     }
     
-    /* 텍스트 입력창 스타일 */
     .stTextInput > div > div > input {
         background-color: #242424 !important;
         color: #FFFFFF !important;
@@ -101,7 +97,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. Gemini Client 초기화 (최신 SDK)
+# 2. Gemini Client 초기화
 # ---------------------------------------------------------
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 
@@ -116,7 +112,7 @@ except Exception as e:
     st.stop()
 
 # ---------------------------------------------------------
-# 3. 사이드바 (왼쪽 상단 흰색 강조 텍스트 적용)
+# 3. 사이드바 (빠른 키워드 클릭 시 즉시 실행 설정)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
@@ -132,13 +128,12 @@ with st.sidebar:
         "🎸 90년대 따뜻한 록 밴드"
     ]
     
-    selected_preset = ""
     for p in presets:
         if st.button(p, key=f"sidebar_{p}"):
-            selected_preset = p
+            st.session_state["selected_theme"] = p
 
 # ---------------------------------------------------------
-# 4. 메인 화면 (프로필/검색 및 카드뷰)
+# 4. 메인 화면
 # ---------------------------------------------------------
 st.markdown("## 🎧 AI 음악 큐레이터")
 st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
@@ -147,38 +142,43 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 user_input = st.text_input(
     label="어떤 분위기의 노래를 찾으시나요?",
+    value=st.session_state.get("selected_theme", ""),
     placeholder="예: 마음이 차분해지는 새벽 들을만한 노래 알려줘",
     key="custom_query"
 )
 
-# 입력 우선순위 처리
-final_query = user_input.strip() if user_input.strip() else selected_preset
+# 현재 선택된 테마 결정
+final_query = user_input.strip()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 if final_query:
     st.info(f"선택된 테마: **{final_query}**")
 
-# 추천 실행 버튼
-if st.button("▶ 추천 음악 불러오기", type="primary"):
+btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
+
+# ---------------------------------------------------------
+# 5. AI 추천 실행 로직
+# ---------------------------------------------------------
+if btn_clicked or (final_query and st.session_state.get("selected_theme") == final_query):
     if not final_query:
         st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
     else:
         with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
-            prompt = f"""당신은 시각장애인을 포함한 음악 사랑꾼을 위한 친절한 음악 큐레이터입니다.
+            prompt = f"""당신은 음악 큐레이터입니다.
 요청 테마: "{final_query}"
 
 위 테마에 딱 맞는 노래 3곡을 추천해 주세요.
-반드시 마크다운 코드 블록(```json) 없이 오직 JSON 텍스트 형식으로만 답변해야 합니다.
+반드시 아래와 같은 형태의 순수 JSON 텍스트로만 응답하세요. 백틱(```)이나 추가 설명은 넣지 마세요.
 
 {{
-    "summary": "추천 배경 및 큐레이터의 메시지",
+    "summary": "추천 배경 한 줄 메시지",
     "songs": [
         {{
             "title": "곡 제목",
             "artist": "가수명",
             "genre": "장르",
-            "reason": "추천 이유 및 음악적 감상 포인트"
+            "reason": "추천 이유 및 음악적 포인트"
         }}
     ]
 }}"""
@@ -192,14 +192,16 @@ if st.button("▶ 추천 음악 불러오기", type="primary"):
                 raw_text = response.text if hasattr(response, 'text') else ""
                 res_text = raw_text.strip()
                 
-                if res_text.startswith("```json"):
-                    res_text = res_text[7:]
+                # 마크다운 백틱 가공
                 if res_text.startswith("```"):
-                    res_text = res_text[3:]
-                if res_text.endswith("```"):
-                    res_text = res_text[:-3]
+                    lines = res_text.splitlines()
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].startswith("```"):
+                        lines = lines[:-1]
+                    res_text = "\n".join(lines).strip()
 
-                data = json.loads(res_text.strip())
+                data = json.loads(res_text)
 
                 st.markdown("---")
                 st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
@@ -214,28 +216,4 @@ if st.button("▶ 추천 음악 불러오기", type="primary"):
 
                     clean_title = title.replace(' ', '+')
                     clean_artist = artist.replace(' ', '+')
-                    youtube_link = f"https://www.youtube.com/results?search_query={clean_title}+{clean_artist}"
-
-                    # 멀티라인 f-string 파싱 에러 방지를 위해 안전하게 HTML 작성
-                    card_html = (
-                        '<div class="spotify-card">'
-                        f'<div class="song-title">#{idx}. {title}</div>'
-                        f'<div class="artist-name">🎤 {artist} &nbsp;|&nbsp; 🏷️ {genre}</div>'
-                        f'<div class="reason-text">💡 {reason}</div>'
-                        '<br>'
-                        f'<a href="{youtube_link}" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
-                        '</div>'
-                    )
-                    st.markdown(card_html, unsafe_allow_html=True)
-
-            except json.JSONDecodeError:
-                st.warning("추천 결과:")
-                st.write(response.text if hasattr(response, 'text') else response)
-            except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
-
-# ---------------------------------------------------------
-# 5. 하단 고정 스포티파이 스타일 안내
-# ---------------------------------------------------------
-st.markdown("<br><br>---", unsafe_allow_html=True)
-st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
+                    youtube_link = f"
