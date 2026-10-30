@@ -11,14 +11,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# 이미지 디자인 반영: 스포티파이 느낌의 다크 패널 UI 스타일링
+# 스포티파이 느낌의 다크 패널 UI 스타일링
 st.markdown("""
     <style>
     /* 전체 배경색 - 딥 다크 메인 테마 */
     .stApp {
         background-color: #121212 !important;
         color: #FFFFFF !important;
-        font-family: 'Circular', 'Malgun Gothic', sans-serif;
+        font-family: 'Malgun Gothic', sans-serif;
     }
     
     /* 사이드바 스타일링 */
@@ -31,13 +31,9 @@ st.markdown("""
     .spotify-card {
         background-color: #181818;
         border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 12px;
+        padding: 18px;
+        margin-bottom: 14px;
         border: 1px solid #282828;
-        transition: transform 0.2s ease, background-color 0.2s ease;
-    }
-    .spotify-card:hover {
-        background-color: #282828;
     }
     
     /* 타이틀 및 네온 강조 텍스트 */
@@ -69,11 +65,6 @@ st.markdown("""
         font-size: 1.05rem !important;
         width: 100%;
         margin-bottom: 6px;
-    }
-    .stButton > button:hover {
-        background-color: #1ed760 !important;
-        color: #000000 !important;
-        transform: scale(1.02);
     }
     
     /* 텍스트 입력창 스타일 */
@@ -176,26 +167,4 @@ if st.button("▶ 추천 음악 불러오기", type="primary"):
                     contents=prompt
                 )
                 
-                res_text = response.text.strip()
-                if res_text.startswith("```json"):
-                    res_text = res_text[7:]
-                if res_text.startswith("```"):
-                    res_text = res_text[3:]
-                if res_text.endswith("```"):
-                    res_text = res_text[:-3]
-
-                data = json.loads(res_text.strip())
-
-                st.markdown("---")
-                st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.subheader(" Top Recommended Tracks")
-
-                for idx, song in enumerate(data.get("songs", []), start=1):
-                    title = song.get("title", "제목 없음")
-                    artist = song.get("artist", "가수 미상")
-                    genre = song.get("genre", "장르 미상")
-                    reason = song.get("reason", "추천 내용")
-
-                    youtube_link = f"https://www.youtube.com/results?search_query={title.replace(' ', '+')}+{artist.replace(' ',
+                res_text = response.
