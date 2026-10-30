@@ -135,6 +135,16 @@ st.markdown(
     [data-testid="stAudioInput"] { background: #15151a; border-radius: 14px; padding: 4px; }
     [data-testid="stAudioInput"] * { color: #ffffff; }
 
+/* 마이크 아이콘 검정색으로 변경 */
+[data-testid="stAudioInput"] button svg {
+    fill: #000000 !important;
+    color: #000000 !important;
+    stroke: #000000 !important;
+}
+
+[data-testid="stAudioInput"] button {
+    background: #ffffff !important;
+}
     *:focus { outline: 4px solid #ffd54a !important; outline-offset: 2px; }
     </style>
     """,
