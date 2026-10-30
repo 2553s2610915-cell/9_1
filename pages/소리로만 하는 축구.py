@@ -1,27 +1,4 @@
-import streamlit as st
-import streamlit.components.v1 as components
-import base64
-
-st.set_page_config(
-    page_title="오징어 게임 PK 오디오 축구",
-    page_icon="⚽",
-    layout="wide"
-)
-
-st.markdown("""
-<style>
-    .stApp {
-        background-color: #0d1117;
-        color: #ffffff;
-        padding: 0rem;
-    }
-    header {visibility: hidden;}
-    footer {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
-
-# HTML/JS 원본 코드
-raw_game_html = """<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -505,3 +482,324 @@ raw_game_html = """<!DOCTYPE html>
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(-7, 14, 5, 12);
         ctx.fillRect(2, 14, 5, 12);
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-8, 26, 7, 5);
+        ctx.fillRect(1, 26, 7, 5);
+
+        ctx.restore();
+    }
+
+    function drawPinkGuardKicker() {
+        ctx.save();
+        ctx.translate(330, 320);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(0, 42, 16, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#e91e63';
+        ctx.beginPath();
+        ctx.arc(0, -8, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(0, -8, 11, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, -8, 5, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#e91e63';
+        ctx.fillRect(-12, 6, 24, 28);
+
+        ctx.strokeStyle = '#111';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, 6);
+        ctx.lineTo(0, 34);
+        ctx.stroke();
+
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-14, 18, 5, 10);
+        ctx.fillRect(9, 18, 5, 10);
+
+        ctx.fillRect(-10, 34, 8, 8);
+        ctx.fillRect(2, 34, 8, 8);
+
+        ctx.restore();
+    }
+
+    function drawSoccerBall(x, y, radius) {
+        ctx.save();
+        ctx.translate(x, y);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let i = 0; i < 5; i++) {
+            let angle = (i * 72) * Math.PI / 180;
+            let px = Math.cos(angle) * (radius * 0.7);
+            let py = Math.sin(angle) * (radius * 0.7);
+
+            ctx.beginPath();
+            ctx.arc(px, py, radius * 0.2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
+
+    function drawGaugeBar(progress) {
+        let barWidth = 260;
+        let barHeight = 16;
+        let startX = (canvas.width - barWidth) / 2;
+        let startY = 375;
+
+        ctx.fillStyle = '#161b22';
+        ctx.fillRect(startX - 2, startY - 2, barWidth + 4, barHeight + 4);
+
+        let gGrad = ctx.createLinearGradient(startX, 0, startX + barWidth, 0);
+        gGrad.addColorStop(0, '#ff4655');
+        gGrad.addColorStop(0.7, '#00f2fe');
+        gGrad.addColorStop(1, '#ff4655');
+        
+        ctx.fillStyle = gGrad;
+        ctx.fillRect(startX, startY, barWidth, barHeight);
+
+        if (progress > 0 && progress <= 1.0) {
+            let posX = startX + (barWidth * progress);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(posX - 2, startY - 4, 4, barHeight + 8);
+        }
+    }
+
+    function drawScene() {
+        drawStadium();
+
+        let currentProgress = 0;
+
+        if (ball && ball.active) {
+            currentProgress = ball.progress;
+            drawSoccerBall(ball.currentX, ball.currentY, ball.size);
+        } else {
+            drawSoccerBall(240, 318, 7);
+        }
+
+        drawGaugeBar(currentProgress);
+
+        if (feedbackTimer > 0) {
+            ctx.font = '900 24px sans-serif';
+            ctx.fillStyle = feedbackColor;
+            ctx.textAlign = 'center';
+            ctx.fillText(feedbackText, canvas.width / 2, 225);
+            feedbackTimer--;
+        }
+    }
+
+    function spawnBall() {
+        if (!isPlaying) return;
+
+        const side = Math.random() < 0.5 ? 'left' : 'right';
+
+        let speedLevel = Math.floor(score / 500);
+        let baseDuration = 2.0 - (speedLevel * 0.25);
+        const duration = Math.max(0.7, baseDuration);
+
+        let startX = 240;
+        let startY = 318;
+        let endX = side === 'left' ? 100 : 380;
+        let endY = 80;
+
+        let willSave = Math.random() < (0.2 + speedLevel * 0.05);
+
+        keeperPos = {
+            x: 240,
+            y: 110,
+            targetX: willSave ? endX : 240,
+            isDiving: false,
+            diveSide: side
+        };
+
+        voicedNow = false;
+
+        ball = {
+            startX: startX,
+            startY: startY,
+            endX: endX,
+            endY: endY,
+            currentX: startX,
+            currentY: startY,
+            size: 7,
+            progress: 0,
+            duration: duration,
+            side: side,
+            willSave: willSave,
+            active: true,
+            hit: false,
+            startTime: performance.now()
+        };
+
+        playSoccerSound(side, duration);
+    }
+
+    function gameLoop(timestamp) {
+        if (isPlaying && ball && ball.active) {
+            let elapsed = (timestamp - ball.startTime) / 1000;
+            ball.progress = elapsed / ball.duration;
+
+            if (ball.progress >= 0.65 && !voicedNow) {
+                voicedNow = true;
+                speak("지금 터치하세요!");
+            }
+
+            if (ball.willSave && ball.progress > 0.4) {
+                keeperPos.x += (keeperPos.targetX - keeperPos.x) * 0.16;
+                keeperPos.isDiving = true;
+            }
+
+            if (ball.progress <= 1.0) {
+                ball.currentX = ball.startX + (ball.endX - ball.startX) * ball.progress;
+                ball.currentY = ball.startY + (ball.endY - ball.startX) * ball.progress;
+                ball.size = 7 + (ball.progress * 13);
+            } else if (!ball.hit) {
+                ball.active = false;
+                handleMiss("놓침!");
+            }
+        }
+
+        drawScene();
+
+        if (isPlaying) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function handleTouch(e) {
+        if (e) e.preventDefault();
+        if (!isPlaying || !ball || !ball.active || ball.hit) return;
+
+        ball.hit = true;
+        ball.active = false;
+
+        if (ball.willSave && ball.progress > 0.6) {
+            setFeedback("SAVED BY KEEPER! (노 차감)", "#38bdf8");
+            playBooingCrowdSound();
+            updateUI();
+            setTimeout(spawnBall, 1600);
+            return;
+        }
+
+        let diff = Math.abs(0.85 - ball.progress);
+
+        if (diff <= 0.15) {
+            score += 100;
+            let currentLevel = Math.floor(score / 500);
+            setFeedback(`GOAL! PERFECT! (속도 Lv.${currentLevel + 1})`, "#00f2fe");
+            playCheerCrowdSound();
+            setTimeout(spawnBall, 1600);
+        } else if (diff <= 0.32) {
+            score += 50;
+            let currentLevel = Math.floor(score / 500);
+            setFeedback(`GOAL! GOOD! (속도 Lv.${currentLevel + 1})`, "#e3b341");
+            playCheerCrowdSound();
+            setTimeout(spawnBall, 1600);
+        } else {
+            handleMiss("타이밍 미스!");
+        }
+
+        updateUI();
+    }
+
+    function handleMiss(reason) {
+        lives--;
+        setFeedback("TIMING MISS!", "#ff4655");
+        playBooingCrowdSound();
+        updateUI();
+
+        if (lives <= 0) {
+            gameOver();
+        } else {
+            setTimeout(spawnBall, 1600);
+        }
+    }
+
+    function setFeedback(text, color) {
+        feedbackText = text;
+        feedbackColor = color;
+        feedbackTimer = 45;
+    }
+
+    function updateUI() {
+        document.getElementById('score-val').innerText = score;
+        let hearts = '';
+        for (let i = 0; i < lives; i++) hearts += '❤️';
+        document.getElementById('lives-val').innerText = hearts || '💀';
+    }
+
+    function launchGame() {
+        initAudio();
+        if (isBgmOn) startRoyal44BGM();
+
+        document.getElementById('lobby-container').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'flex';
+
+        isPlaying = true;
+        score = 0;
+        lives = 3;
+        ball = null;
+        updateUI();
+
+        speak("게임 시작! 소리를 듣고 골을 성공시키세요.");
+
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(gameLoop);
+
+        setTimeout(spawnBall, 1800);
+    }
+
+    function returnToLobby() {
+        isPlaying = false;
+        document.getElementById('game-screen').style.display = 'none';
+        document.getElementById('lobby-container').style.display = 'flex';
+    }
+
+    function gameOver() {
+        isPlaying = false;
+        speak("게임 오버. 최종 점수는 " + score + "점입니다.");
+        setTimeout(() => {
+            alert("게임 오버! 최종 점수: " + score + "점");
+            returnToLobby();
+        }, 1000);
+    }
+
+    canvas.addEventListener('touchstart', handleTouch, { passive: false });
+    canvas.addEventListener('mousedown', handleTouch);
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            handleTouch();
+        }
+    });
+
+    window.addEventListener('click', () => {
+        initAudio();
+        if (isBgmOn && !bgmInterval) startRoyal44BGM();
+    }, { once: true });
+</script>
+</body>
+</html>
