@@ -1,100 +1,201 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import json
 
 # ---------------------------------------------------------
-# 1. 페이지 기본 설정 및 고대비 접근성 스타일링
+# 1. 페이지 설정 및 스포티파이 스타일 UI Custom CSS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="VoiceMelody - 시각 장애인을 위한 노래 추천",
+    page_title="VoiceMelody - AI Music Curator",
     page_icon="🎵",
     layout="wide"
 )
 
-# 시각 장애인 및 저시력자를 위한 가독성 향상 CSS
+# 이미지 디자인 반영: 스포티파이 느낌의 다크 패널 UI 스타일링
 st.markdown("""
     <style>
-    html, body, [class*="css"] {
-        font-size: 1.15rem !important;
-        font-family: 'Malgun Gothic', sans-serif;
+    /* 전체 배경색 - 딥 다크 메인 테마 */
+    .stApp {
+        background-color: #121212 !important;
+        color: #FFFFFF !important;
+        font-family: 'Circular', 'Malgun Gothic', sans-serif;
     }
+    
+    /* 사이드바 스타일링 */
+    [data-testid="stSidebar"] {
+        background-color: #000000 !important;
+        padding-top: 1rem;
+    }
+    
+    /* 메인 영역 카드리스트 패널 */
+    .spotify-card {
+        background-color: #181818;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid #282828;
+        transition: transform 0.2s ease, background-color 0.2s ease;
+    }
+    .spotify-card:hover {
+        background-color: #282828;
+    }
+    
+    /* 타이틀 및 네온 강조 텍스트 */
+    .song-title {
+        color: #1DB954;
+        font-size: 1.3rem;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+    .artist-name {
+        color: #B3B3B3;
+        font-size: 1.0rem;
+        margin-bottom: 8px;
+    }
+    .reason-text {
+        color: #E5E5E5;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+    
+    /* 스포티파이 시그니처 그리너리 버튼 스타일 */
     .stButton > button {
-        width: 100%;
-        height: 3.5rem;
-        font-size: 1.2rem !important;
+        background-color: #1DB954 !important;
+        color: #000000 !important;
         font-weight: bold !important;
-        border: 2px solid #1E88E5 !important;
-        border-radius: 8px !important;
-        margin-bottom: 0.5rem;
+        border-radius: 50px !important;
+        border: none !important;
+        padding: 0.6rem 1.2rem !important;
+        font-size: 1.05rem !important;
+        width: 100%;
+        margin-bottom: 6px;
     }
+    .stButton > button:hover {
+        background-color: #1ed760 !important;
+        color: #000000 !important;
+        transform: scale(1.02);
+    }
+    
+    /* 텍스트 입력창 스타일 */
     .stTextInput > div > div > input {
-        font-size: 1.2rem !important;
-        height: 3.2rem;
-    }
-    .song-card {
-        background-color: #f0f4f8;
-        border-left: 6px solid #1E88E5;
-        padding: 18px;
-        margin-bottom: 15px;
-        border-radius: 6px;
+        background-color: #242424 !important;
+        color: #FFFFFF !important;
+        border: 1px solid #3E3E3E !important;
+        border-radius: 6px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. Gemini API 키 확인 및 초기화
+# 2. Gemini Client 초기화 (최신 SDK)
 # ---------------------------------------------------------
 api_key = st.secrets.get("GEMINI_API_KEY", None)
 
 if not api_key:
-    st.error("⚠️ Secrets 설정에서 GEMINI_API_KEY를 찾을 수 없습니다. Secrets 설정 방법을 참고해 주세요.")
+    st.error("⚠️ Secrets 설정에서 GEMINI_API_KEY를 찾을 수 없습니다.")
     st.stop()
 
 try:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+    client = genai.Client(api_key=api_key)
 except Exception as e:
-    st.error(f"⚠️ Gemini API 초기화 중 오류가 발생했습니다: {e}")
+    st.error(f"⚠️ API 초기화 실패: {e}")
     st.stop()
 
 # ---------------------------------------------------------
-# 3. 메인 레이아웃 및 설명
+# 3. 사이드바 (내 라이브러리 & 키워드 퀵 선택)
 # ---------------------------------------------------------
-st.title("🎵 VoiceMelody: 시각 장애인을 위한 노래 추천")
-st.write("원하는 기분, 장르, 상황을 입력하거나 아래 키워드를 선택하시면 AI가 딱 맞는 노래를 추천해 드립니다.")
-
-st.markdown("---")
+with st.sidebar:
+    st.title("🎵 VoiceMelody")
+    st.caption("시각 장애인 및 음성 사용자 전용 추천")
+    
+    st.markdown("---")
+    st.markdown("### 📚 빠른 키워드 선택")
+    
+    presets = [
+        "🌧️ 비 오는 날 감성 발라드",
+        "☕ 카페 느낌의 편안한 재즈",
+        "🏃‍♂️ 드라이브용 신나는 K-POP",
+        "🌙 수면 유도 조용한 뉴에이지",
+        "🎸 90년대 따뜻한 록 밴드"
+    ]
+    
+    selected_preset = ""
+    for p in presets:
+        if st.button(p, key=f"sidebar_{p}"):
+            selected_preset = p
 
 # ---------------------------------------------------------
-# 4. 입력 섹션
+# 4. 메인 화면 (프로필/검색 및 카드뷰)
 # ---------------------------------------------------------
-st.subheader("1. 추천 방식 선택하기")
+st.markdown("## 🎧 AI 음악 큐레이터")
+st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
 
-col1, col2 = st.columns([1, 1])
+st.markdown("<br>", unsafe_allow_html=True)
 
-preset_keywords = [
-    "🌧️ 비 오는 날 듣기 좋은 아늑한 노래",
-    "☕ 카페에서 공부할 때 듣는 편안한 음악",
-    "🏃‍♂️ 운동할 때 들으면 신나는 K-POP",
-    "🌙 밤에 잠들기 전에 듣는 조용한 클래식/뉴에이지",
-    "🚗 드라이브할 때 듣기 좋은 시원한 팝송",
-    "🍂 감성적이고 아련한 짝사랑 발라드"
-]
+user_input = st.text_input(
+    label="어떤 분위기의 노래를 찾으시나요?",
+    placeholder="예: 마음이 차분해지는 새벽 들을만한 노래 알려줘",
+    key="custom_query"
+)
 
-selected_preset = ""
-with col1:
-    st.markdown("**[방법 A] 자주 찾는 키워드 선택**")
-    for kw in preset_keywords:
-        if st.button(kw, key=kw):
-            selected_preset = kw
+# 입력 우선순위 처리
+final_query = user_input.strip() if user_input.strip() else selected_preset
 
-with col2:
-    st.markdown("**[방법 B] 자유롭게 직접 입력**")
-    user_input = st.text_input(
-        label="원하는 분위기, 가사, 가수, 느낌 등을 적어주세요:",
-        placeholder="예: 따뜻한 차 한 잔 마시며 듣기 좋은 90년대 밴드 음악",
-        key="custom_input"
-    )
+st.markdown("<br>", unsafe_allow_html=True)
 
-# 입력값 확정 (직접 입력 우대)
-final_query = user_input.strip()
+if final_query:
+    st.info(f"선택된 테마: **{final_query}**")
+
+# 추천 실행 버튼
+if st.button("▶ 추천 음악 불러오기", type="primary"):
+    if not final_query:
+        st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
+    else:
+        with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
+            prompt = f"""당신은 시각장애인을 포함한 음악 사랑꾼을 위한 친절한 음악 큐레이터입니다.
+요청 테마: "{final_query}"
+
+위 테마에 딱 맞는 노래 3곡을 추천해 주세요.
+반드시 마크다운 코드 블록(```json) 없이 오직 JSON 텍스트 형식으로만 답변해야 합니다.
+
+{{
+    "summary": "추천 배경 및 큐레이터의 메시지",
+    "songs": [
+        {{
+            "title": "곡 제목",
+            "artist": "가수명",
+            "genre": "장르",
+            "reason": "추천 이유 및 음악적 감상 포인트"
+        }}
+    ]
+}}"""
+
+            try:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash-lite',
+                    contents=prompt
+                )
+                
+                res_text = response.text.strip()
+                if res_text.startswith("```json"):
+                    res_text = res_text[7:]
+                if res_text.startswith("```"):
+                    res_text = res_text[3:]
+                if res_text.endswith("```"):
+                    res_text = res_text[:-3]
+
+                data = json.loads(res_text.strip())
+
+                st.markdown("---")
+                st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                
+                st.subheader(" Top Recommended Tracks")
+
+                for idx, song in enumerate(data.get("songs", []), start=1):
+                    title = song.get("title", "제목 없음")
+                    artist = song.get("artist", "가수 미상")
+                    genre = song.get("genre", "장르 미상")
+                    reason = song.get("reason", "추천 내용")
+
+                    youtube_link = f"https://www.youtube.com/results?search_query={title.replace(' ', '+')}+{artist.replace(' ',
