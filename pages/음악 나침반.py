@@ -26,13 +26,16 @@ YT_LOOKUP_MAX = 12  # 공식 음원 영상을 찾아보는 곡 수 (나머지는
 HOWTO = [
     ("마이크로 말하기",
      "마이크 버튼을 눌러 말하고, 끝나면 다시 눌러 주세요. 말한 내용이 내용창에 글로 써지고, 틀린 부분은 고칠 수 있어요."),
-    ("가수",
-     "가수 여러명을 찾을 때 Enter 키로 줄을 나눠 주세요. 첫째 줄에 가수 1 이름, 둘째 줄에 가수 2 이름을 써요."),
+    ("가수와 제목",
+     "가수와 제목은 한 줄에 같이 써요. '아이유 좋은날'처럼 써도 되고 '좋은날 아이유'처럼 순서를 바꿔도 돼요. "
+     "가수를 여러 명 쓸 때는 Enter 키로 줄을 나눠 주세요."),
+    ("가수 이름",
+     "가수 이름은 한글도 영어도 돼요. 숀이라고 써도 SHAUN이라고 써도 같은 가수를 찾아요."),
     ("한 줄만 쓸 때",
-     "한 줄만 쓰면 띄어쓰기가 있어도 전체가 노래 제목이에요. 분위기만 써도 돼요."),
+     "가수 이름 없이 쓰면 띄어쓰기가 있어도 전체가 노래 제목이에요. 분위기만 써도 돼요."),
     ("말로 가수와 제목 입력",
-     '"가수 아이유, 제목 좋은날"이라고 말하면 내용창에 두 줄로 나뉘어 써져요. '
-     '"가수", "제목"이라는 말을 쓰지 않으면 한 줄로 써져요.'),
+     '"가수 아이유, 제목 좋은날"이라고 말하면 내용창에 "아이유 좋은날"처럼 한 줄로 써져요. '
+     '가수를 여러 명 말하면 줄이 나뉘어 써져요. "가수", "제목"이라는 말을 쓰지 않으면 말한 그대로 써져요.'),
     ("추천받기",
      "추천받기 버튼을 누르면 곡 카드가 나와요. 글을 누르면 읽어 주고, 오른쪽 위 스위치로 읽기를 켜고 끌 수 있어요."),
 ]
@@ -329,7 +332,7 @@ def esc(x) -> str:
 
 
 def info_html() -> str:
-    """사진 속 정보(i) 아이콘. 마우스를 올리거나 누르면 사용 방법이 보입니다."""
+    """정보(i) 아이콘. 마우스를 올리거나 누르면 사용 방법이 보입니다."""
     speak = "사용 방법. " + " ".join(f"{t}. {d}" for t, d in HOWTO)
     items = "".join(f'<p><b>{esc(t)}</b> {esc(d)}</p>' for t, d in HOWTO)
     return (
@@ -412,7 +415,8 @@ def transcribe(audio_bytes: bytes, mime_type: str = "audio/wav") -> str:
         "다음 음성을 들리는 그대로 글자로 받아 적어 주세요. 주로 한국어입니다. "
         "설명이나 따옴표 없이 받아쓴 내용만 출력하세요. 말소리가 없으면 빈 문자열만 출력하세요.\n"
         "단, 말하는 사람이 '가수'라고 말한 뒤 이름을, '제목'이라고 말한 뒤 노래 제목을 말했다면 "
-        "'가수', '제목'이라는 말은 빼고 첫째 줄에 가수 이름, 둘째 줄에 노래 제목만 적으세요. "
+        "'가수', '제목'이라는 말은 빼고 '가수이름 노래제목'을 한 줄로 적으세요. "
+        "가수를 여러 명 말했다면 가수마다 줄을 나눠서 적으세요. "
         "그렇지 않으면 말한 그대로 한 줄로 적으세요."
     )
     resp = generate([prompt, types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)])
@@ -436,29 +440,121 @@ def str_list(v) -> list:
     return [str(x).strip() for x in v if x] if isinstance(v, list) else []
 
 
-def ask_model(artist_line: str, other_text: str, ask_count: int, exclude: list) -> dict:
-    """가수 표기 찾기, 제목인지 판단, 취향 분석, (가수가 없을 때 쓸) 비슷한 느낌의 곡을 받습니다."""
+# ---------- 이름 비교 도구 ----------
+def norm(s: str) -> str:
+    s = (s or "").lower()
+    s = re.sub(r"\(.*?\)|\[.*?\]", "", s)
+    return re.sub(r"[^0-9a-z가-힣]", "", s)
+
+
+def similar(a: str, b: str) -> bool:
+    a, b = norm(a), norm(b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) >= 2 and short in long_ and len(short) / len(long_) >= 0.6:
+        return True
+    return SequenceMatcher(None, a, b).ratio() >= 0.85
+
+
+def artist_ok(names: list, store_artist: str) -> bool:
+    store_n = norm(store_artist)
+    for n in names:
+        if not n:
+            continue
+        if similar(n, store_artist):
+            return True
+        nn = norm(n)
+        if len(nn) >= 2 and nn in store_n:
+            return True
+    return False
+
+
+def norm_artist(s: str) -> str:
+    n = norm(s)
+    if n.startswith("the") and len(n) > 5:
+        n = n[3:]
+    return n
+
+
+def same_artist(names: list, store: str) -> bool:
+    """가수 이름이 사실상 같은 경우만 True (비슷한 이름의 다른 가수는 걸러냅니다)."""
+    parts = [store] + re.split(r"\s*(?:,|&|/| feat\.? | ft\.? | with )\s*", store or "", flags=re.I)
+    for p in parts:
+        pn = norm_artist(p)
+        if not pn:
+            continue
+        for n in names:
+            nn = norm_artist(n)
+            if nn and (nn == pn or SequenceMatcher(None, nn, pn).ratio() >= 0.9):
+                return True
+    return False
+
+
+def uniq(items: list) -> list:
+    out = []
+    keys = set()
+    for x in items:
+        x = (x or "").strip()
+        k = norm(x)
+        if not k or k in keys:
+            continue
+        keys.add(k)
+        out.append(x)
+    return out
+
+
+def strip_artist(line: str, typed: list) -> str:
+    """줄에서 가수 이름 부분을 빼고 남은 말(제목)을 돌려줍니다."""
+    out = line
+    for t in sorted(typed, key=len, reverse=True):
+        new = re.sub(re.escape(t), " ", out, count=1, flags=re.I)
+        if new != out:
+            out = new
+            break
+    return re.sub(r"\s+", " ", out).strip(" ,.-")
+
+
+def dedupe_songs(items: list) -> list:
+    out = []
+    keys = set()
+    for s in items:
+        k = norm(s["title"]) + "|" + norm_artist(s["artist"])
+        if k in keys:
+            continue
+        keys.add(k)
+        out.append(s)
+    return out
+
+
+# ---------- AI: 줄 해석 + 취향 분석 ----------
+def ask_model(lines: list, ask_count: int, exclude: list) -> dict:
+    """줄마다 가수와 제목을 나누고, 취향을 분석하고, (가수가 없을 때 쓸) 비슷한 느낌의 곡을 받습니다."""
     from google.genai import types
 
+    numbered = "\n".join(f"{i + 1}. {l}" for i, l in enumerate(lines))
     exclude_text = ", ".join(exclude[-50:]) if exclude else "없음"
     prompt = f"""
 당신은 시각 장애인을 위한 친절한 음악 안내자 '음악 나침반'입니다.
 사용자가 입력한 내용을 분석해 취향에 맞는 노래를 추천하세요.
 
-[입력]
-가수 줄: {artist_line if artist_line else "없음"}
-내용: {other_text}
+[입력: 줄마다 따로 해석합니다. 줄바꿈은 가수를 여러 명 쓸 때 사용합니다]
+{numbered}
 
-[규칙]
-- 내용의 띄어쓰기는 가수와 제목을 나누는 것이 아닙니다. 가수 이름을 내용에서 추측하지 마세요.
-- 가수 줄이 "없음"이 아니면 사용자가 가수 이름을 직접 입력한 것입니다.
-  artist_aliases에 그 가수의 한글 표기와 영문 표기를 적고(입력한 이름 포함), songs는 빈 목록으로 두세요.
-- second_is_title: 가수 줄이 있을 때 내용이 노래 제목처럼 보이면 true, 분위기나 상황이나 느낌을 설명하는 말이면 false.
-  가수 줄이 없으면 false.
-- 가수 줄이 없으면 artist_aliases는 빈 목록으로 두고, songs에 내용과 어울리는 곡을 쓰세요.
+[줄 해석 규칙]
+- 한 줄에는 가수 이름과 노래 제목이 함께 있을 수 있습니다. 순서는 "가수 제목"도, "제목 가수"도 가능합니다.
+- 가수 이름과 노래 제목 안에도 띄어쓰기가 있을 수 있습니다.
+- 줄에 실제로 있는 가수(또는 그룹) 이름이 확실할 때만 artist에 적으세요. artist는 사용자가 쓴 표기 그대로 적으세요.
+- 가수 이름만 있는 줄이면 artist만 적고 title은 빈 문자열로 두세요.
+- title에는 가수 이름을 뺀 나머지 중 노래 제목인 부분을 사용자가 쓴 그대로 적으세요. 고치거나 번역하지 마세요.
+- mood에는 분위기나 상황을 설명하는 말만 적으세요. 없으면 빈 문자열.
+- 일반 단어나 문장은 가수가 아닙니다. 노래 제목만 있는 줄이거나 가수 이름이 확실하지 않으면 artist는 빈 문자열로 두세요.
+- artist_aliases에는 그 가수의 한글 표기와 영문 표기를 모두 적으세요. 사용자가 쓴 표기도 포함하세요. (예: 숀과 SHAUN, 아이유와 IU)
 
-[songs 규칙: 가수 줄이 없을 때만]
-- 내용이 단어나 제목이면 그 단어와 비슷한 분위기의 곡을 쓰세요. 제목이 같은 곡은 따로 찾으니 쓰지 마세요.
+[songs 규칙: 모든 줄에 가수가 없을 때만, 아니면 빈 목록]
+- 사용자가 단어나 제목만 썼다면, 그 단어와 비슷한 분위기의 곡을 쓰세요. 제목이 같은 곡은 따로 찾으니 쓰지 마세요.
 - 추천 곡 수: {ask_count}곡
 - 이미 나온 곡(중복 금지): {exclude_text}
 - 가수가 직접 발표한 원곡만, 반드시 실제로 발매된 아주 유명한 곡만 쓰세요. 확실하지 않으면 쓰지 마세요.
@@ -469,8 +565,9 @@ def ask_model(artist_line: str, other_text: str, ask_count: int, exclude: list) 
 
 [출력 형식: 아래 JSON만 출력]
 {{
-  "artist_aliases": [],
-  "second_is_title": false,
+  "lines": [
+    {{"line": 1, "artist": "", "artist_aliases": [], "title": "", "mood": ""}}
+  ],
   "analysis": {{
     "summary": "취향을 한두 문장으로 요약",
     "mood": ["분위기 키워드"],
@@ -484,9 +581,39 @@ def ask_model(artist_line: str, other_text: str, ask_count: int, exclude: list) 
 """
     resp = generate(
         prompt,
-        types.GenerateContentConfig(response_mime_type="application/json", temperature=0.4),
+        types.GenerateContentConfig(response_mime_type="application/json", temperature=0.3),
     )
     data = parse_json(resp.text)
+
+    by_idx = {}
+    raw_lines = data.get("lines")
+    if isinstance(raw_lines, list):
+        for it in raw_lines:
+            if isinstance(it, dict):
+                try:
+                    by_idx[int(it.get("line")) - 1] = it
+                except Exception:
+                    continue
+
+    infos = []
+    for i, line in enumerate(lines):
+        it = by_idx.get(i, {})
+        artist = str(it.get("artist", "") or "").strip()
+        aliases = str_list(it.get("artist_aliases"))
+        title = str(it.get("title", "") or "").strip()
+        mood = str(it.get("mood", "") or "").strip()
+        ln = norm(line)
+        # AI가 말한 가수가 실제로 줄에 쓰여 있는지 확인합니다 (지어낸 가수 방지)
+        typed = [x for x in [artist] + aliases if x and norm(x) and norm(x) in ln]
+        if not artist or not typed:
+            infos.append({"artist": "", "aliases": [], "title": "", "mood": ""})
+            continue
+        artist = typed[0]
+        if title and norm(title) not in ln:
+            title = strip_artist(line, typed)
+        if norm(title) == norm(artist):
+            title = ""
+        infos.append({"artist": artist, "aliases": uniq(aliases), "title": title, "mood": mood})
 
     songs = data.get("songs")
     if not isinstance(songs, list):
@@ -504,13 +631,7 @@ def ask_model(artist_line: str, other_text: str, ask_count: int, exclude: list) 
     analysis = data.get("analysis")
     if not isinstance(analysis, dict):
         analysis = {}
-    flag = data.get("second_is_title")
-    return {
-        "analysis": analysis,
-        "aliases": str_list(data.get("artist_aliases")),
-        "second_is_title": flag is True or str(flag).lower() == "true",
-        "songs": clean,
-    }
+    return {"analysis": analysis, "lines": infos, "songs": clean}
 
 
 def pick_from_catalog(user_text: str, cands: list, count: int) -> list:
@@ -572,59 +693,6 @@ reason은 귀로 듣기 편한 짧은 한국어 한 문장입니다. 이모지�
     return out
 
 
-# ---------- 이름 비교 도구 ----------
-def norm(s: str) -> str:
-    s = (s or "").lower()
-    s = re.sub(r"\(.*?\)|\[.*?\]", "", s)
-    return re.sub(r"[^0-9a-z가-힣]", "", s)
-
-
-def similar(a: str, b: str) -> bool:
-    a, b = norm(a), norm(b)
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    short, long_ = (a, b) if len(a) <= len(b) else (b, a)
-    if len(short) >= 2 and short in long_ and len(short) / len(long_) >= 0.6:
-        return True
-    return SequenceMatcher(None, a, b).ratio() >= 0.85
-
-
-def artist_ok(names: list, store_artist: str) -> bool:
-    store_n = norm(store_artist)
-    for n in names:
-        if not n:
-            continue
-        if similar(n, store_artist):
-            return True
-        nn = norm(n)
-        if len(nn) >= 2 and nn in store_n:
-            return True
-    return False
-
-
-def norm_artist(s: str) -> str:
-    n = norm(s)
-    if n.startswith("the") and len(n) > 5:
-        n = n[3:]
-    return n
-
-
-def same_artist(names: list, store: str) -> bool:
-    """가수 이름이 사실상 같은 경우만 True (비슷한 이름의 다른 가수는 걸러냅니다)."""
-    parts = [store] + re.split(r"\s*(?:,|&|/| feat\.? | ft\.? | with )\s*", store or "", flags=re.I)
-    for p in parts:
-        pn = norm_artist(p)
-        if not pn:
-            continue
-        for n in names:
-            nn = norm_artist(n)
-            if nn and (nn == pn or SequenceMatcher(None, nn, pn).ratio() >= 0.9):
-                return True
-    return False
-
-
 # ---------- 음원 스토어(실제 곡 목록) ----------
 @st.cache_data(ttl=3600, show_spinner=False)
 def itunes_get(url: str) -> list:
@@ -664,50 +732,33 @@ def is_bad_track(title: str, album: str) -> bool:
     return bool(BAD_ALBUM_RE.search(album or ""))
 
 
-def detect_store_artist(line: str) -> str:
-    """한 줄 입력이 스토어에 있는 가수 이름과 정확히 같으면 그 이름을 돌려줍니다."""
-    line = (line or "").strip()
-    n = norm_artist(line)
-    if not n or len(line) > 30:
-        return ""
-    for country in ("KR", "US"):
-        try:
-            rows = itunes_search(line, country, entity="musicArtist", limit=5)
-        except Exception:
-            continue
-        for r in rows:
-            an = r.get("artistName", "")
-            if an and norm_artist(an) == n:
-                return an
-    return ""
-
-
-def artist_catalog(requested: list) -> list:
-    """가수 이름으로 스토어에서 그 가수의 실제 곡 목록을 가져옵니다."""
-    tracks = []
-
-    found = []  # (artistId, country)
+def resolve_artist(aliases: list):
+    """한글/영어 이름으로 스토어에서 가수를 찾습니다. (가수 id 목록, 스토어에 적힌 이름 목록)"""
+    ids = []
+    store_names = []
     seen_ids = set()
-    for name in requested[:4]:
-        hit = False
+    for name in aliases[:4]:
         for country in ("KR", "US"):
             try:
-                results = itunes_search(name, country, entity="musicArtist", limit=5)
+                rows = itunes_search(name, country, entity="musicArtist", limit=5)
             except Exception:
                 continue
-            for r in results:
+            for r in rows:
                 aid = r.get("artistId")
-                if aid and aid not in seen_ids and same_artist(requested, r.get("artistName", "")):
+                an = (r.get("artistName") or "").strip()
+                if aid and an and aid not in seen_ids and same_artist(aliases, an):
                     seen_ids.add(aid)
-                    found.append((aid, country))
-                    hit = True
-                    break
-            if hit:
-                break
-        if len(found) >= 3:
+                    ids.append((aid, country))
+                    store_names.append(an)
+        if len(ids) >= 2:
             break
+    return ids[:2], uniq(store_names)
 
-    for aid, country in found:
+
+def artist_catalog(ids: list, names: list) -> list:
+    """가수의 실제 곡 목록을 스토어에서 가져옵니다."""
+    tracks = []
+    for aid, country in ids[:3]:
         try:
             rows = itunes_lookup_songs(aid, country)
         except Exception:
@@ -717,14 +768,14 @@ def artist_catalog(requested: list) -> list:
                 tracks.append(r)
 
     if not tracks:
-        for name in requested[:4]:
+        for name in names[:4]:
             for country in ("KR", "US"):
                 try:
                     rows = itunes_search(name, country, entity="song", attribute="artistTerm", limit=200)
                 except Exception:
                     continue
                 for r in rows:
-                    if r.get("kind") == "song" and same_artist(requested, r.get("artistName", "")):
+                    if r.get("kind") == "song" and same_artist(names, r.get("artistName", "")):
                         tracks.append(r)
 
     out = []
@@ -752,7 +803,7 @@ STOP_TOKENS = {
 
 
 def build_title_queries(raw: str) -> list:
-    """한 줄 입력은 띄어쓰기가 있어도 전체를 제목으로 봅니다. (못 찾으면 군더더기 말을 뺀 것도 시도)"""
+    """가수 이름이 없는 줄은 띄어쓰기가 있어도 전체를 제목으로 봅니다. (못 찾으면 군더더기 말을 뺀 것도 시도)"""
     raw = (raw or "").strip()
     if not raw or len(raw) > 40:
         return []
@@ -774,8 +825,8 @@ def find_exact(queries: list, restrict: list, want_missing: bool, missing_artist
         if not qn:
             continue
         terms = []
-        if restrict:
-            terms.append(f"{restrict[0]} {q}")
+        for a in restrict[:2]:
+            terms.append(f"{a} {q}")
         terms.append(q)
         rows = []
         for term in terms:
@@ -1045,68 +1096,72 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
         raise ValueError("먼저 마이크로 말하거나 내용을 입력해 주세요.")
 
     seen = set(norm(x) for x in exclude)
-
-    # 가수는 줄바꿈(Enter)으로 나눕니다. 줄이 하나면 띄어쓰기가 있어도 전체를 제목/내용으로 봅니다.
-    artist_line = lines[0] if len(lines) >= 2 else ""
-    other_text = " / ".join(lines[1:]) if artist_line else lines[0]
-
-    data = ask_model(artist_line, other_text, min(count + 5, 15), exclude)
+    data = ask_model(lines, min(count + 5, 15), exclude)
     analysis = data["analysis"]
 
-    names = []          # 가수 이름 표기들
-    display = []        # 화면에 보여 줄 가수 이름
-    restrict = []       # 제목 찾기를 제한할 가수
-    title_queries = []
-    want_missing = False
-    desc = ""           # 곡을 고를 때 참고할 분위기 설명
-
-    if artist_line:
-        names = [artist_line] + [a for a in data["aliases"] if norm(a) != norm(artist_line)]
-        display = [artist_line]
-        restrict = names
-        if data["second_is_title"]:
-            title_queries = [lines[1]]
-            want_missing = True
-            desc = " ".join(lines[2:])
-        else:
-            desc = " ".join(lines[1:])
-    else:
-        raw = lines[0]
-        title_queries = build_title_queries(raw)
-        store_name = detect_store_artist(raw)
-        if store_name:
-            names = [raw] + ([store_name] if norm(store_name) != norm(raw) else [])
-            display = [store_name]
-        desc = raw
+    # 줄마다 가수가 있는 줄(groups)과 없는 줄(plain)로 나눕니다.
+    groups = []
+    plain = []
+    for line, info in zip(lines, data["lines"]):
+        artist = info["artist"]
+        if artist:
+            aliases = uniq([artist] + info["aliases"])
+            ids, store_names = resolve_artist(aliases)
+            title = info["title"]
+            # 스토어에서 가수를 확인했거나, 가수 이름만 쓴 줄만 가수로 인정합니다.
+            if ids or not title:
+                display = store_names[0] if store_names else artist
+                groups.append({
+                    "display": display,
+                    "names": uniq([display] + aliases + store_names),
+                    "ids": ids,
+                    "title": title,
+                    "mood": info["mood"],
+                })
+                continue
+        plain.append(line)
 
     # 1) 입력한 제목과 같은 곡을 먼저, 개수 제한 없이 모두 찾습니다 (처음 추천받을 때만)
     first = []
-    if not exclude and title_queries:
-        found, missing = find_exact(title_queries, restrict, want_missing, artist_line)
-        first = missing + found
+    if not exclude:
+        for g in groups:
+            if g["title"]:
+                found, missing = find_exact([g["title"]], g["names"], True, g["display"])
+                first += missing + found
+        for line in plain:
+            q = build_title_queries(line)
+            if q:
+                found, _m = find_exact(q, [], False, "")
+                first += found
+        first = dedupe_songs(first)
         for s in first:
             seen.add(norm(s["title"]))
 
     # 2) 그다음 가수의 곡 또는 비슷한 느낌의 곡을 찾습니다
-    need = count
     vibe = []
-    if names:
-        cands = [c for c in artist_catalog(names) if norm(c["title"]) not in seen]
-        if cands:
-            vibe = pick_from_catalog(desc or "가장 유명한 곡", cands, need)
-        else:
-            vibe = artist_youtube_songs(names, seen, need)
-            if not vibe and not first:
-                if exclude:
-                    raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
-                name = display[0]
-                vibe = [{
+    if groups:
+        per = min(count, max(3, -(-count // len(groups))))
+        for g in groups:
+            cands = [c for c in artist_catalog(g["ids"], g["names"]) if norm(c["title"]) not in seen]
+            if cands:
+                picked = pick_from_catalog(g["mood"] or "가장 유명한 곡", cands, per)
+            else:
+                picked = artist_youtube_songs(g["names"], seen, per)
+            vibe += picked
+        if not vibe and not first:
+            if exclude:
+                raise ValueError("이 가수의 곡을 더 찾지 못했습니다.")
+            for g in groups:
+                name = g["display"]
+                vibe.append({
                     "title": f"{name} 노래 보기", "title_alt": "", "artist": name, "artist_alt": "",
                     "reason": "곡 목록을 찾지 못해, 유튜브에서 가수 이름으로 검색한 결과를 보여 드립니다.",
                     "yt": "", "url": "https://www.youtube.com/results?search_query=" + quote(name),
                     "tag": "가수 이름으로 검색", "match": False,
-                }]
+                })
+        final = dedupe_songs(first + vibe)
     else:
+        need = count
         tried = list(exclude)
         checked = 0
         errors = 0
@@ -1116,7 +1171,7 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
                 if len(vibe) >= need:
                     break
                 try:
-                    cands = ask_model("", other_text, min(need - len(vibe) + 5, 15), tried)["songs"]
+                    cands = ask_model(plain, min(need - len(vibe) + 5, 15), tried)["songs"]
                 except Exception:
                     break
             if not cands:
@@ -1139,8 +1194,7 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
             if checked and errors == checked:
                 raise RuntimeError("곡 확인에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.")
             raise ValueError("확인된 곡을 찾지 못했습니다. 조금 다르게 설명해서 다시 시도해 주세요.")
-
-    final = first + vibe[:max(need, 1)]
+        final = dedupe_songs(first + vibe[:max(need, 1)])
 
     # 앞쪽 곡만 공식 음원 영상을 찾습니다 (곡이 많으면 느려지기 때문)
     head = final[:YT_LOOKUP_MAX]
@@ -1150,7 +1204,7 @@ def recommend(user_text: str, count: int, exclude: list) -> dict:
         if u:
             s["yt"] = u
 
-    return {"analysis": analysis or {}, "songs": final, "artists": display[:3]}
+    return {"analysis": analysis or {}, "songs": final, "artists": [g["display"] for g in groups][:3]}
 
 
 # ---------- 표시용 ----------
@@ -1403,10 +1457,10 @@ def render_home():
             st.error(friendly_error(e))
 
     st.text_area(
-        "내용 (가수와 제목은 Enter로 줄을 나눠 주세요)",
+        "내용 (가수를 여러 명 쓸 때는 Enter로 줄을 나눠 주세요)",
         key="user_text",
         height=150,
-        placeholder="첫째 줄: 가수 이름\n둘째 줄: 노래 제목",
+        placeholder="예: 아이유 좋은날\n좋은날 아이유\n가수 여러 명은 Enter로 줄을 나눠요",
     )
 
     st.button("추천받기", type="primary", on_click=set_pending, args=("new",))
