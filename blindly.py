@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 세션 상태 초기화 (입력값 및 추천 상태 유지용)
+# 세션 상태 초기화 (입력값 유지용)
 if "selected_theme" not in st.session_state:
     st.session_state["selected_theme"] = ""
 
@@ -157,7 +157,7 @@ if final_query:
 btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
 
 # ---------------------------------------------------------
-# 5. AI 추천 실행 로직
+# 5. AI 추천 실행 로직 (모델 변경: gemini-2.5-flash)
 # ---------------------------------------------------------
 if btn_clicked:
     if not final_query:
@@ -183,8 +183,9 @@ if btn_clicked:
 }"""
 
             try:
+                # 사용 가능한 최신 표준 모델명 적용
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash-lite',
+                    model='gemini-2.5-flash',
                     contents=prompt
                 )
                 
@@ -217,7 +218,6 @@ if btn_clicked:
                     clean_artist = artist.replace(' ', '+')
                     youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
 
-                    # f-string 구문 오류를 완전히 방지하는 단순 문자열 결합
                     card_html = (
                         '<div class="spotify-card">'
                         '<div class="song-title">#' + str(idx) + '. ' + title + '</div>'
@@ -230,7 +230,13 @@ if btn_clicked:
                     st.markdown(card_html, unsafe_allow_html=True)
 
             except json.JSONDecodeError:
-                st.warning("AI 응답 파싱 중 차이가 있었습니다. 결과 텍스트:")
+                st.warning("AI 응답을 가져왔으나 정형화에 차이가 있었습니다. 결과:")
                 st.write(raw_text)
             except Exception as e:
                 st.error("오류가 발생했습니다: " + str(e))
+
+# ---------------------------------------------------------
+# 6. 하단 안내
+# ---------------------------------------------------------
+st.markdown("<br><br>---", unsafe_allow_html=True)
+st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
