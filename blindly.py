@@ -11,8 +11,11 @@ st.set_page_config(
     layout="wide"
 )
 
+# 세션 상태 초기화 (입력값 및 바로 실행 플래그)
 if "selected_theme" not in st.session_state:
     st.session_state["selected_theme"] = ""
+if "auto_run" not in st.session_state:
+    st.session_state["auto_run"] = False
 
 st.markdown("""
     <style>
@@ -96,10 +99,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. 스마트 큐레이션 백업 엔진 (API 404 및 연동 오류 완전 차단)
+# 2. 음악 추천 엔진
 # ---------------------------------------------------------
 def get_recommendations(query):
-    # 키워드별 맞춤 음악 라이브러리
     music_db = {
         "비": [
             {"title": "비가 오고 그래서", "artist": "헤이즈", "genre": "R&B / 발라드", "reason": "비 오고 센치한 날 특유의 아늑함과 촉촉한 감성을 더해주는 곡입니다."},
@@ -123,24 +125,22 @@ def get_recommendations(query):
         ],
         "드라이브": [
             {"title": "Blinding Lights", "artist": "The Weeknd", "genre": "신스팝", "reason": "시원하게 도로를 달리는 분위기와 딱 어울리는 레트로 신스웨이브 곡입니다."},
-            {"title": " 사건의 지평선", "artist": "윤하", "genre": "록 / 팝", "reason": "벅차오르는 사운드와 시원한 가창력이 드라이브의 즐거움을 더해줍니다."},
+            {"title": "사건의 지평선", "artist": "윤하", "genre": "록 / 팝", "reason": "벅차오르는 사운드와 시원한 가창력이 드라이브의 즐거움을 더해줍니다."},
             {"title": "Rollin'", "artist": "브레이브걸스", "genre": "댄스", "reason": "청량하고 시원한 멜로디가 마음까지 탁 트이게 해주는 드라이브 추천곡입니다."}
         ]
     }
     
-    # 입력어와 가장 유사한 데이터 탐색
     for key in music_db:
         if key in query:
             return f"요청하신 '{query}' 테마와 딱 어울리는 분위기 있는 곡들을 모았습니다.", music_db[key]
             
-    # 매칭되는 특정 키워드가 없는 경우 랜덤 맞춤 구성
-    default_summary = f"선택하신 '{query}' 분위기에 어울리는 AI 큐레이터의 추천 음악 세 곡입니다."
+    default_summary = f"선택하신 '{query}' 분위기에 어울리는 큐레이터의 추천 음악 세 곡입니다."
     all_songs = [s for songs in music_db.values() for s in songs]
     selected_songs = random.sample(all_songs, 3)
     return default_summary, selected_songs
 
 # ---------------------------------------------------------
-# 3. 사이드바
+# 3. 사이드바 (클릭 시 세션에 저장 및 즉시 실행 플래그 설정)
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
@@ -159,11 +159,12 @@ with st.sidebar:
     for p in presets:
         if st.button(p, key="btn_" + p):
             st.session_state["selected_theme"] = p
+            st.session_state["auto_run"] = True
 
 # ---------------------------------------------------------
 # 4. 메인 화면
 # ---------------------------------------------------------
-st.markdown("## 🎧 AI 음악 큐레이터")
+st.markdown("## 🎧 AI 음악 큐레이ator")
 st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -185,43 +186,5 @@ if final_query:
 btn_clicked = st.button("▶ 추천 음악 불러오기", type="primary")
 
 # ---------------------------------------------------------
-# 5. 추천 음악 결과 출력
-# ---------------------------------------------------------
-if btn_clicked:
-    if not final_query:
-        st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
-    else:
-        with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
-            summary, songs = get_recommendations(final_query)
-
-            st.markdown("---")
-            st.markdown("### 💬 Curator's Note\n> " + summary)
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.subheader("🎧 Top Recommended Tracks")
-
-            for idx, song in enumerate(songs, start=1):
-                title = song["title"]
-                artist = song["artist"]
-                genre = song["genre"]
-                reason = song["reason"]
-
-                clean_title = title.replace(' ', '+')
-                clean_artist = artist.replace(' ', '+')
-                youtube_link = "https://www.youtube.com/results?search_query=" + clean_title + "+" + clean_artist
-
-                card_html = (
-                    '<div class="spotify-card">'
-                    '<div class="song-title">#' + str(idx) + '. ' + title + '</div>'
-                    '<div class="artist-name">🎤 ' + artist + ' &nbsp;|&nbsp; 🏷️ ' + genre + '</div>'
-                    '<div class="reason-text">💡 ' + reason + '</div>'
-                    '<br>'
-                    '<a href="' + youtube_link + '" target="_blank" style="color: #1DB954; font-weight: bold; text-decoration: none;">▶ YouTube에서 바로 재생하기</a>'
-                    '</div>'
-                )
-                st.markdown(card_html, unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 6. 하단 안내
-# ---------------------------------------------------------
-st.markdown("<br><br>---", unsafe_allow_html=True)
-st.caption("🔊 VoiceMelody는 스크린리더(NVDA, VoiceOver 등) 접근성에 최적화되어 있습니다.")
+# 5. 추천 음악 결과 출력 (버튼 클릭 OR 왼쪽 사이드바 클릭 시 실행)
+# ----------------
