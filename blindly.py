@@ -113,4 +113,110 @@ try:
     client = genai.Client(api_key=api_key)
 except Exception as e:
     st.error(f"⚠️ API 초기화 실패: {e}")
-    st.
+    st.stop()
+
+# ---------------------------------------------------------
+# 3. 사이드바 (왼쪽 상단 흰색 강조 텍스트 적용)
+# ---------------------------------------------------------
+with st.sidebar:
+    st.markdown('<div class="sidebar-title">🎵 VoiceMelody</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-subtitle">시각 장애인 및 음성 사용자 전용 추천</div>', unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("### 📚 빠른 키워드 선택")
+    
+    presets = [
+        "🌧️ 비 오는 날 감성 발라드",
+        "☕ 카페 느낌의 편안한 재즈",
+        "🏃‍♂️ 드라이브용 신나는 K-POP",
+        "🌙 수면 유도 조용한 뉴에이지",
+        "🎸 90년대 따뜻한 록 밴드"
+    ]
+    
+    selected_preset = ""
+    for p in presets:
+        if st.button(p, key=f"sidebar_{p}"):
+            selected_preset = p
+
+# ---------------------------------------------------------
+# 4. 메인 화면 (프로필/검색 및 카드뷰)
+# ---------------------------------------------------------
+st.markdown("## 🎧 AI 음악 큐레이터")
+st.write("원하는 느낌이나 가사를 자유롭게 적거나, 왼쪽 라이브러리에서 빠른 키워드를 선택해 보세요.")
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+user_input = st.text_input(
+    label="어떤 분위기의 노래를 찾으시나요?",
+    placeholder="예: 마음이 차분해지는 새벽 들을만한 노래 알려줘",
+    key="custom_query"
+)
+
+# 입력 우선순위 처리
+final_query = user_input.strip() if user_input.strip() else selected_preset
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if final_query:
+    st.info(f"선택된 테마: **{final_query}**")
+
+# 추천 실행 버튼
+if st.button("▶ 추천 음악 불러오기", type="primary"):
+    if not final_query:
+        st.warning("분위기를 입력하거나 왼쪽 메뉴에서 키워드를 선택해 주세요.")
+    else:
+        with st.spinner("🎵 당신을 위한 음악 플레이리스트를 구성하는 중..."):
+            prompt = f"""당신은 시각장애인을 포함한 음악 사랑꾼을 위한 친절한 음악 큐레이터입니다.
+요청 테마: "{final_query}"
+
+위 테마에 딱 맞는 노래 3곡을 추천해 주세요.
+반드시 마크다운 코드 블록(```json) 없이 오직 JSON 텍스트 형식으로만 답변해야 합니다.
+
+{{
+    "summary": "추천 배경 및 큐레이터의 메시지",
+    "songs": [
+        {{
+            "title": "곡 제목",
+            "artist": "가수명",
+            "genre": "장르",
+            "reason": "추천 이유 및 음악적 감상 포인트"
+        }}
+    ]
+}}"""
+
+            try:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash-lite',
+                    contents=prompt
+                )
+                
+                raw_text = response.text if hasattr(response, 'text') else ""
+                res_text = raw_text.strip()
+                
+                if res_text.startswith("```json"):
+                    res_text = res_text[7:]
+                if res_text.startswith("```"):
+                    res_text = res_text[3:]
+                if res_text.endswith("```"):
+                    res_text = res_text[:-3]
+
+                data = json.loads(res_text.strip())
+
+                st.markdown("---")
+                st.markdown(f"### 💬 Curator's Note\n> {data.get('summary', '')}")
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.subheader("🎧 Top Recommended Tracks")
+
+                for idx, song in enumerate(data.get("songs", []), start=1):
+                    title = song.get("title", "제목 없음")
+                    artist = song.get("artist", "가수 미상")
+                    genre = song.get("genre", "장르 미상")
+                    reason = song.get("reason", "추천 내용")
+
+                    clean_title = title.replace(' ', '+')
+                    clean_artist = artist.replace(' ', '+')
+                    youtube_link = f"https://www.youtube.com/results?search_query={clean_title}+{clean_artist}"
+
+                    st.markdown(f"""
+                        <div class="spotify-card">
+                            <div class="song-title">#{idx}. {title}</div>
+                            <div class="artist-name">🎤 {artist} &nbsp;|&nbsp; 🏷️ {genre}</div>
