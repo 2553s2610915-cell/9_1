@@ -3,36 +3,23 @@ import streamlit.components.v1 as components
 
 # 페이지 설정
 st.set_page_config(
-    page_title="FIFA Style PK 오디오 축구",
+    page_title="VALORANT Style PK Audio Soccer",
     page_icon="⚽",
-    layout="centered"
+    layout="wide"
 )
 
-# Custom CSS
+# Custom CSS - Streamlit 기본 여백 제거
 st.markdown("""
 <style>
     .stApp {
-        background-color: #0b0f19;
+        background-color: #0d1117;
         color: #ffffff;
+        padding: 0rem;
     }
-    .big-title {
-        text-align: center;
-        font-size: 2.1rem;
-        font-weight: bold;
-        color: #2ea44f;
-        margin-bottom: 5px;
-    }
-    .sub-title {
-        text-align: center;
-        color: #8b949e;
-        font-size: 0.95rem;
-        margin-bottom: 20px;
-    }
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-st.markdown('<div class="big-title">⚽ Real PK Audio Soccer</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">실사 그래픽 PK 게임! 키퍼가 막으면 라이프 차감 없음 & 환호/야유 음성 연동</div>', unsafe_allow_html=True)
 
 game_html = r"""
 <!DOCTYPE html>
@@ -49,78 +36,283 @@ game_html = r"""
         body {
             margin: 0;
             padding: 0;
-            background-color: #0b0f19;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #fff;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
         }
-        #game-container {
+
+        /* 발로란트 스타일 상단 바 */
+        .valo-navbar {
             width: 100%;
-            max-width: 500px;
-            height: 540px;
-            background-color: #161b22;
-            border: 2px solid #30363d;
-            border-radius: 16px;
+            height: 50px;
+            background: rgba(15, 23, 36, 0.85);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            position: absolute;
+            top: 0;
+            z-index: 10;
+        }
+        .valo-logo {
+            font-size: 1.2rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: #ff4655;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .valo-nav-items {
+            display: flex;
+            gap: 25px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: #8b9bb4;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .valo-nav-item.active {
+            color: #ece8e1;
+            border-bottom: 2px solid #ff4655;
+            padding-bottom: 12px;
+        }
+
+        #bgm-toggle-btn {
+            background: rgba(255, 70, 85, 0.2);
+            border: 1px solid #ff4655;
+            color: #fff;
+            padding: 6px 14px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        #bgm-toggle-btn:hover {
+            background: #ff4655;
+        }
+
+        /* 메인 대기실 카드 레이아웃 */
+        #lobby-container {
+            width: 90%;
+            max-width: 950px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 60px;
+        }
+
+        .cards-wrapper {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            width: 100%;
+            margin: 20px 0;
+        }
+
+        .valo-card {
+            width: 170px;
+            height: 320px;
+            background: rgba(20, 30, 48, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: space-between;
-            padding: 10px;
+            padding: 15px;
             position: relative;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            cursor: pointer;
+            backdrop-filter: blur(5px);
         }
+
+        .valo-card:hover, .valo-card.selected {
+            transform: translateY(-10px) scale(1.03);
+            border-color: #00f2fe;
+            box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+            background: rgba(20, 35, 60, 0.85);
+        }
+
+        .valo-card.selected::before {
+            content: "SELECTED";
+            position: absolute;
+            top: -12px;
+            background: #00f2fe;
+            color: #000;
+            font-size: 0.65rem;
+            font-weight: 900;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+
+        .card-img-placeholder {
+            width: 100%;
+            height: 180px;
+            background: linear-gradient(180deg, #1f2d40 0%, #0d1520 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: bold;
+            color: #fff;
+            text-align: center;
+            margin-top: 8px;
+        }
+        .card-sub {
+            font-size: 0.75rem;
+            color: #8b9bb4;
+            text-align: center;
+        }
+
+        /* 게임 실행 버튼 영역 */
+        #play-start-btn {
+            width: 280px;
+            padding: 16px;
+            font-size: 1.2rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: #000;
+            background: #00f2fe;
+            border: none;
+            clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 15px;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.5);
+        }
+
+        #play-start-btn:hover {
+            background: #ff4655;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255, 70, 85, 0.7);
+        }
+
+        /* 인게임 캔버스 영역 */
+        #game-screen {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 500px;
+        }
+
         .stats-bar {
             width: 100%;
             display: flex;
             justify-content: space-between;
             font-size: 1.1rem;
             font-weight: bold;
-            background: #21262d;
+            background: rgba(15, 23, 36, 0.9);
             padding: 8px 15px;
             border-radius: 8px;
             border: 1px solid #30363d;
+            margin-bottom: 10px;
         }
-        .score { color: #2ea44f; }
-        .heart { color: #f85149; }
-        
+        .score { color: #00f2fe; }
+        .heart { color: #ff4655; }
+
         canvas {
             width: 100%;
             height: 410px;
             border-radius: 8px;
             cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.8);
         }
-        
-        #start-btn {
-            width: 100%;
-            padding: 14px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #ffffff;
-            background-color: #238636;
-            border: none;
-            border-radius: 8px;
+
+        #back-to-lobby-btn {
+            margin-top: 10px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #8b9bb4;
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 4px;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(35, 134, 54, 0.4);
-        }
-        #start-btn:active {
-            transform: scale(0.98);
         }
     </style>
 </head>
 <body>
 
-<div id="game-container">
+<!-- 발로란트 상단 네비게이션 -->
+<div class="valo-navbar">
+    <div class="valo-logo">⚽ AUDIO SOCCER</div>
+    <div class="valo-nav-items">
+        <span class="valo-nav-item active">시작하기</span>
+        <span class="valo-nav-item">경쟁전</span>
+        <span class="valo-nav-item">스파이크 돌격</span>
+        <span class="valo-nav-item">데스매치</span>
+    </div>
+    <button id="bgm-toggle-btn" onclick="toggleBGM()">🎵 Royal 44 BGM: ON</button>
+</div>
+
+<!-- 발로란트 대기실 로비 화면 -->
+<div id="lobby-container">
+    <div style="font-size: 0.85rem; color: #00f2fe; letter-spacing: 2px; margin-bottom: 5px;">SELECT GAME MODE</div>
+    <div style="font-size: 1.8rem; font-weight: 900; letter-spacing: 1px; margin-bottom: 15px;">시작하기 (PLAY)</div>
+
+    <div class="cards-wrapper">
+        <div class="valo-card">
+            <div class="card-img-placeholder">🎯</div>
+            <div>
+                <div class="card-title">기본 연습</div>
+                <div class="card-sub">기본 슛 타격</div>
+            </div>
+        </div>
+        <div class="valo-card">
+            <div class="card-img-placeholder">🔥</div>
+            <div>
+                <div class="card-title">경쟁전</div>
+                <div class="card-sub">랭크 매치</div>
+            </div>
+        </div>
+        <div class="valo-card selected">
+            <div class="card-img-placeholder">⚽</div>
+            <div>
+                <div class="card-title">지역 점령</div>
+                <div class="card-sub">PK 오디오 모드</div>
+            </div>
+        </div>
+        <div class="valo-card">
+            <div class="card-img-placeholder">⚡</div>
+            <div>
+                <div class="card-title">데스매치</div>
+                <div class="card-sub">무한 슈팅</div>
+            </div>
+        </div>
+        <div class="valo-card">
+            <div class="card-img-placeholder">🏆</div>
+            <div>
+                <div class="card-title">사용자 지정</div>
+                <div class="card-sub">커스텀 게임</div>
+            </div>
+        </div>
+    </div>
+
+    <button id="play-start-btn" onclick="launchGame()">대기열 시작</button>
+</div>
+
+<!-- 인게임 화면 -->
+<div id="game-screen">
     <div class="stats-bar">
         <div>점수: <span id="score-val" class="score">0</span></div>
         <div>라이프: <span id="lives-val" class="heart">❤️❤️❤️</span></div>
     </div>
 
     <canvas id="gameCanvas" width="480" height="410"></canvas>
-
-    <button id="start-btn" onclick="startGame()">⚽ 게임 시작</button>
+    <button id="back-to-lobby-btn" onclick="returnToLobby()">🔙 로비로 돌아가기</button>
 </div>
 
 <script>
@@ -129,6 +321,8 @@ game_html = r"""
     
     let audioCtx = null;
     let isPlaying = false;
+    let isBgmOn = true;
+    let bgmInterval = null;
     let score = 0;
     let lives = 3;
     
@@ -140,23 +334,114 @@ game_html = r"""
     let feedbackTimer = 0;
     let voicedNow = false;
 
-    function speak(text) {
-        if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'ko-KR';
-            utterance.rate = 1.25;
-            utterance.pitch = 1.0;
-            window.speechSynthesis.speak(utterance);
-        }
-    }
-
     function initAudio() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
+        }
+    }
+
+    /* 🎵 래퍼 로얄44 (Royal 44) 스타일 808 비트 & 힙합 BGM 루프 */
+    function startRoyal44BGM() {
+        if (!isBgmOn) return;
+        initAudio();
+
+        let step = 0;
+        // 808 트랩 / 몽환적인 싱잉 비트 노트 스케일
+        const notes = [130.81, 146.83, 164.81, 196.00, 220.00];
+
+        if (bgmInterval) clearInterval(bgmInterval);
+
+        bgmInterval = setInterval(() => {
+            if (!isBgmOn || !audioCtx) return;
+
+            const time = audioCtx.currentTime;
+
+            // 1. 808 딥 베이스 (드롭)
+            if (step % 4 === 0) {
+                const bOsc = audioCtx.createOscillator();
+                const bGain = audioCtx.createGain();
+                bOsc.type = 'sine';
+                bOsc.frequency.setValueAtTime(65, time);
+                bOsc.frequency.exponentialRampToValueAtTime(32, time + 0.35);
+
+                bGain.gain.setValueAtTime(0.3, time);
+                bGain.gain.exponentialRampToValueAtTime(0.01, time + 0.35);
+
+                bOsc.connect(bGain);
+                bGain.connect(audioCtx.destination);
+                bOsc.start(time);
+                bOsc.stop(time + 0.35);
+            }
+
+            // 2. 몽환적인 트랩 신스 멜로디 (로얄44 스타일)
+            if (step % 2 === 0) {
+                const mOsc = audioCtx.createOscillator();
+                const mGain = audioCtx.createGain();
+                mOsc.type = 'triangle';
+
+                const freq = notes[(step * 3) % notes.length];
+                mOsc.frequency.setValueAtTime(freq, time);
+
+                mGain.gain.setValueAtTime(0.08, time);
+                mGain.gain.linearRampToValueAtTime(0.01, time + 0.25);
+
+                mOsc.connect(mGain);
+                mGain.connect(audioCtx.destination);
+                mOsc.start(time);
+                mOsc.stop(time + 0.25);
+            }
+
+            // 3. 하이햇 (트랩 스네어)
+            if (step % 2 === 1) {
+                const hBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
+                const hData = hBuf.getChannelData(0);
+                for (let i = 0; i < hBuf.length; i++) hData[i] = Math.random() * 2 - 1;
+
+                const hNode = audioCtx.createBufferSource();
+                hNode.buffer = hBuf;
+
+                const hFilter = audioCtx.createBiquadFilter();
+                hFilter.type = 'highpass';
+                hFilter.frequency.value = 7000;
+
+                const hGain = audioCtx.createGain();
+                hGain.gain.setValueAtTime(0.05, time);
+                hGain.gain.linearRampToValueAtTime(0.01, time + 0.05);
+
+                hNode.connect(hFilter);
+                hFilter.connect(hGain);
+                hGain.connect(audioCtx.destination);
+                hNode.start(time);
+            }
+
+            step = (step + 1) % 16;
+        }, 180);
+    }
+
+    function toggleBGM() {
+        isBgmOn = !isBgmOn;
+        const btn = document.getElementById('bgm-toggle-btn');
+        if (isBgmOn) {
+            btn.innerText = "🎵 Royal 44 BGM: ON";
+            btn.style.background = "rgba(255, 70, 85, 0.2)";
+            startRoyal44BGM();
+        } else {
+            btn.innerText = "🔇 Royal 44 BGM: OFF";
+            btn.style.background = "rgba(255, 255, 255, 0.1)";
+            if (bgmInterval) clearInterval(bgmInterval);
+        }
+    }
+
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.25;
+            window.speechSynthesis.speak(utterance);
         }
     }
 
@@ -191,10 +476,7 @@ game_html = r"""
         const bufferSize = audioCtx.sampleRate * 1.5;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
-        
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = Math.random() * 2 - 1;
-        }
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
 
         const noise = audioCtx.createBufferSource();
         noise.buffer = buffer;
@@ -202,7 +484,6 @@ game_html = r"""
         const filter = audioCtx.createBiquadFilter();
         filter.type = 'bandpass';
         filter.frequency.setValueAtTime(850, audioCtx.currentTime);
-        filter.Q.setValueAtTime(1.4, audioCtx.currentTime);
 
         const gain = audioCtx.createGain();
         gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
@@ -225,12 +506,8 @@ game_html = r"""
 
         osc1.type = 'sawtooth';
         osc2.type = 'sine';
-
         osc1.frequency.setValueAtTime(110, audioCtx.currentTime);
-        osc1.frequency.linearRampToValueAtTime(95, audioCtx.currentTime + 1.2);
-
         osc2.frequency.setValueAtTime(115, audioCtx.currentTime);
-        osc2.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 1.2);
 
         gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
         gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.2);
@@ -244,21 +521,6 @@ game_html = r"""
         osc2.start();
         osc1.stop(audioCtx.currentTime + 1.2);
         osc2.stop(audioCtx.currentTime + 1.2);
-    }
-
-    function playHitEffect() {
-        if (!audioCtx) return;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(350, audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(750, audioCtx.currentTime + 0.15);
-        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
     }
 
     function drawStadium() {
@@ -275,24 +537,12 @@ game_html = r"""
             ctx.fillRect(rx + 1, ry - 3, 4, 3);
         }
 
-        ctx.fillStyle = 'rgba(0,0,0,0.15)';
-        ctx.fillRect(160, 0, 15, 95);
-        ctx.fillRect(310, 0, 15, 95);
-
         ctx.fillStyle = '#111';
         ctx.fillRect(0, 95, canvas.width, 25);
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(310, 97, 160, 21);
-        
-        ctx.fillStyle = '#e65100';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText('EA SPORTS', 320, 112);
-        
-        ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('FIFA ONLINE 3', 150, 112);
+        ctx.fillText('VALORANT • ROYAL 44 AUDIO SOCCER ⚽', canvas.width / 2, 112);
 
         ctx.strokeStyle = '#f5f5f5';
         ctx.lineWidth = 5;
@@ -318,18 +568,6 @@ game_html = r"""
         ctx.fillStyle = pitchGrad;
         ctx.fillRect(0, 140, canvas.width, canvas.height - 140);
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-        for (let y = 145; y < canvas.height; y += 28) {
-            ctx.fillRect(0, y, canvas.width, 14);
-        }
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(30, 145);
-        ctx.lineTo(450, 145);
-        ctx.stroke();
-
         drawKeeper();
         drawKicker();
     }
@@ -349,84 +587,19 @@ game_html = r"""
         if (keeperPos.isDiving) {
             let dir = keeperPos.diveSide === 'left' ? -1 : 1;
             ctx.rotate(dir * 0.8);
-
             ctx.fillStyle = '#1b1b1b';
             ctx.fillRect(-8, -15, 16, 26);
-
             ctx.fillStyle = '#ffcc80';
             ctx.beginPath();
             ctx.arc(0, -22, 6, 0, Math.PI * 2);
             ctx.fill();
-
-            ctx.strokeStyle = '#1b1b1b';
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(-6, -10);
-            ctx.lineTo(dir * 30, -15);
-            ctx.stroke();
-
-            ctx.fillStyle = '#80deea';
-            ctx.beginPath();
-            ctx.arc(dir * 32, -15, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = '#1b1b1b';
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(-4, 10);
-            ctx.lineTo(-15, 25);
-            ctx.moveTo(4, 10);
-            ctx.lineTo(15, 25);
-            ctx.stroke();
-
-            ctx.fillStyle = '#80deea';
-            ctx.fillRect(-18, 24, 6, 4);
-            ctx.fillRect(12, 24, 6, 4);
         } else {
             ctx.fillStyle = '#ffcc80';
             ctx.beginPath();
             ctx.arc(0, -22, 6, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#4e342e';
-            ctx.beginPath();
-            ctx.arc(0, -24, 6, Math.PI, Math.PI * 2);
-            ctx.fill();
-
             ctx.fillStyle = '#1b1b1b';
             ctx.fillRect(-10, -16, 20, 24);
-            ctx.fillStyle = '#ffd54f';
-            ctx.fillRect(-3, -12, 6, 5);
-
-            ctx.strokeStyle = '#1b1b1b';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(-10, -12);
-            ctx.lineTo(-20, -2);
-            ctx.moveTo(10, -12);
-            ctx.lineTo(20, -2);
-            ctx.stroke();
-
-            ctx.fillStyle = '#80deea';
-            ctx.beginPath();
-            ctx.arc(-21, -1, 4, 0, Math.PI * 2);
-            ctx.arc(21, -1, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#111111';
-            ctx.fillRect(-9, 8, 18, 10);
-
-            ctx.strokeStyle = '#111111';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(-5, 18);
-            ctx.lineTo(-7, 28);
-            ctx.moveTo(5, 18);
-            ctx.lineTo(7, 28);
-            ctx.stroke();
-
-            ctx.fillStyle = '#80deea';
-            ctx.fillRect(-10, 27, 6, 4);
-            ctx.fillRect(4, 27, 6, 4);
         }
 
         ctx.restore();
@@ -435,38 +608,13 @@ game_html = r"""
     function drawKicker() {
         ctx.save();
         ctx.translate(330, 325);
-
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath();
-        ctx.ellipse(0, 42, 14, 5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = '#5d4037';
-        ctx.beginPath();
-        ctx.arc(0, -8, 8, 0, Math.PI * 2);
-        ctx.fill();
-
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(-12, 0, 24, 26);
-
         ctx.fillStyle = '#263238';
         ctx.font = '900 8px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('BALE', 0, 8);
-        ctx.font = '900 12px sans-serif';
         ctx.fillText('32', 0, 21);
-
-        ctx.fillStyle = '#eceff1';
-        ctx.fillRect(-11, 26, 22, 10);
-
-        ctx.fillStyle = '#ffcc80';
-        ctx.fillRect(-9, 36, 6, 6);
-        ctx.fillRect(3, 36, 6, 6);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-10, 40, 7, 4);
-        ctx.fillRect(3, 40, 7, 4);
-
         ctx.restore();
     }
 
@@ -480,9 +628,9 @@ game_html = r"""
         ctx.fillRect(startX - 2, startY - 2, barWidth + 4, barHeight + 4);
 
         let gGrad = ctx.createLinearGradient(startX, 0, startX + barWidth, 0);
-        gGrad.addColorStop(0, '#f85149');
-        gGrad.addColorStop(0.7, '#2ea44f');
-        gGrad.addColorStop(1, '#f85149');
+        gGrad.addColorStop(0, '#ff4655');
+        gGrad.addColorStop(0.7, '#00f2fe');
+        gGrad.addColorStop(1, '#ff4655');
         
         ctx.fillStyle = gGrad;
         ctx.fillRect(startX, startY, barWidth, barHeight);
@@ -507,22 +655,12 @@ game_html = r"""
             ctx.arc(ball.currentX, ball.currentY, ball.size, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
             ctx.fill();
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            ctx.fillStyle = '#2ea44f';
-            ctx.beginPath();
-            ctx.arc(ball.currentX - 2, ball.currentY - 2, ball.size / 3, 0, Math.PI * 2);
-            ctx.fill();
             ctx.restore();
         } else {
             ctx.fillStyle = '#ffffff';
             ctx.beginPath();
             ctx.arc(240, 318, 6, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#000';
-            ctx.stroke();
         }
 
         drawGaugeBar(currentProgress);
@@ -596,7 +734,7 @@ game_html = r"""
 
             if (ball.progress <= 1.0) {
                 ball.currentX = ball.startX + (ball.endX - ball.startX) * ball.progress;
-                ball.currentY = ball.startY + (ball.endY - ball.startY) * ball.progress;
+                ball.currentY = ball.startY + (ball.endY - ball.startX) * ball.progress;
                 ball.size = 6 + (ball.progress * 12);
             } else if (!ball.hit) {
                 ball.active = false;
@@ -618,6 +756,7 @@ game_html = r"""
         ball.hit = true;
         ball.active = false;
 
+        // 🔥 키퍼가 막으면 라이프 차감 없음
         if (ball.willSave && ball.progress > 0.6) {
             setFeedback("SAVED BY KEEPER! 🧤 (노 차감)", "#38bdf8");
             playBooingCrowdSound();
@@ -630,14 +769,12 @@ game_html = r"""
 
         if (diff <= 0.15) {
             score += 100;
-            setFeedback("GOAL! PERFECT! ⚽", "#2ea44f");
-            playHitEffect();
+            setFeedback("GOAL! PERFECT! ⚽", "#00f2fe");
             playCheerCrowdSound();
             setTimeout(spawnBall, 1600);
         } else if (diff <= 0.32) {
             score += 50;
             setFeedback("GOAL! GOOD! 👍", "#e3b341");
-            playHitEffect();
             playCheerCrowdSound();
             setTimeout(spawnBall, 1600);
         } else {
@@ -649,7 +786,7 @@ game_html = r"""
 
     function handleMiss(reason) {
         lives--;
-        setFeedback("TIMING MISS! ❌", "#f85149");
+        setFeedback("TIMING MISS! ❌", "#ff4655");
         playBooingCrowdSound();
         updateUI();
 
@@ -673,16 +810,18 @@ game_html = r"""
         document.getElementById('lives-val').innerText = hearts || '💀';
     }
 
-    function startGame() {
+    function launchGame() {
         initAudio();
+        if (isBgmOn) startRoyal44BGM();
+
+        document.getElementById('lobby-container').style.display = 'none';
+        document.getElementById('game-screen').style.display = 'flex';
+
         isPlaying = true;
         score = 0;
         lives = 3;
         ball = null;
-        keeperPos = { x: 240, y: 115, targetX: 240, isDiving: false, diveSide: 'none' };
         updateUI();
-
-        document.getElementById('start-btn').style.display = 'none';
 
         speak("게임 시작! 소리를 듣고 골을 성공시키세요.");
 
@@ -692,11 +831,19 @@ game_html = r"""
         setTimeout(spawnBall, 1800);
     }
 
+    function returnToLobby() {
+        isPlaying = false;
+        document.getElementById('game-screen').style.display = 'none';
+        document.getElementById('lobby-container').style.display = 'flex';
+    }
+
     function gameOver() {
         isPlaying = false;
-        document.getElementById('start-btn').style.display = 'block';
-        document.getElementById('start-btn').innerText = '🔄 다시 시작';
         speak("게임 오버. 최종 점수는 " + score + "점입니다.");
+        setTimeout(() => {
+            alert("게임 오버! 최종 점수: " + score + "점");
+            returnToLobby();
+        }, 1000);
     }
 
     canvas.addEventListener('touchstart', handleTouch, { passive: false });
@@ -707,10 +854,14 @@ game_html = r"""
         }
     });
 
-    drawScene();
+    // 시작 시 BGM 구동
+    window.addEventListener('click', () => {
+        initAudio();
+        if (isBgmOn && !bgmInterval) startRoyal44BGM();
+    }, { once: true });
 </script>
 </body>
 </html>
 """
 
-components.html(game_html, height=560)
+components.html(game_html, height=620)
