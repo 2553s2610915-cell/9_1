@@ -1,4 +1,3 @@
-```python
 import hashlib
 import html as htmllib
 import json
@@ -797,7 +796,7 @@ def resolve_artist(aliases: list):
             for r in rows:
                 aid = r.get("artistId")
                 an = (r.get("artistName") or "").strip()
-                                    if aid and an and aid not in seen_ids and same_artist(aliases, an):
+                if aid and an and aid not in seen_ids and same_artist(aliases, an):
                     seen_ids.add(aid)
                     ids.append((aid, country))
                     store_names.append(an)
@@ -1259,7 +1258,9 @@ def youtube_url(song: dict) -> str:
         return song["yt"]
     q = f"{song['artist']} {song['title']}"
     return "https://www.youtube.com/results?search_query=" + quote(q)
-        CAROUSEL_TEMPLATE = """
+
+
+CAROUSEL_TEMPLATE = """
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
